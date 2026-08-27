@@ -1,19 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { fetchCpuStatus, type CpuStatus } from "@/lib/cpu-status";
+
+const STATUS_TEXT: Record<CpuStatus["status"], string> = {
+  "invalid-code": "잘못된 연결 코드 형식",
+  "no-data": "아직 수신된 데이터 없음",
+  "fetch-failed": "조회 실패",
+  "invalid-format": "데이터 형식을 확인할 수 없음",
+  received: "데이터 수신됨",
+};
 
 export default function Home() {
   const [code, setCode] = useState("");
   const [inputCode, setInputCode] = useState("");
-  const [value, setValue] = useState("");
-  const [loadedValue, setLoadedValue] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
+  const [cpuStatus, setCpuStatus] = useState<CpuStatus | null>(null);
 
   async function issueCode() {
-    setStatus("");
     const res = await fetch("/api/code", { method: "POST" });
     if (!res.ok) {
-      setStatus("연결 코드 발급 실패");
       return;
     }
     const data = (await res.json()) as { code: string };
@@ -21,26 +26,9 @@ export default function Home() {
     setInputCode(data.code);
   }
 
-  async function saveValue() {
-    setStatus("");
-    const res = await fetch("/api/data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: inputCode, value }),
-    });
-    setStatus(res.ok ? "저장 완료" : "저장 실패");
-  }
-
-  async function loadValue() {
-    setStatus("");
-    const res = await fetch(`/api/data?code=${encodeURIComponent(inputCode)}`);
-    if (!res.ok) {
-      setStatus("조회 실패");
-      return;
-    }
-    const data = (await res.json()) as { value: string | null };
-    setLoadedValue(data.value);
-    setStatus(data.value === null ? "저장된 값 없음" : "조회 완료");
+  async function checkCpuStatus() {
+    const result = await fetchCpuStatus(inputCode);
+    setCpuStatus(result);
   }
 
   return (
@@ -59,7 +47,7 @@ export default function Home() {
       </section>
 
       <section>
-        <h2>스켈레톤 검증 (테스트 값 저장/조회)</h2>
+        <h2>CPU 상태 조회</h2>
         <div>
           <label>
             연결 코드{" "}
@@ -70,20 +58,21 @@ export default function Home() {
             />
           </label>
         </div>
-        <div>
-          <label>
-            테스트 값{" "}
-            <input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="저장할 값"
-            />
-          </label>
-        </div>
-        <button onClick={saveValue}>저장</button>
-        <button onClick={loadValue}>조회</button>
-        {loadedValue !== null && <p>조회된 값: {loadedValue}</p>}
-        {status && <p>{status}</p>}
+        <button onClick={checkCpuStatus}>조회</button>
+        {cpuStatus && (
+          <div>
+            <p>상태: {STATUS_TEXT[cpuStatus.status]}</p>
+            {cpuStatus.status === "received" && (
+              <>
+                <p>CPU 사용률: {cpuStatus.cpuPercent.toFixed(1)}%</p>
+                <p>
+                  마지막 측정:{" "}
+                  {new Date(cpuStatus.measuredAt).toLocaleString()}
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </section>
     </main>
   );
