@@ -4,6 +4,7 @@ import { Redis } from "@upstash/redis";
 const redis = new Redis({
   url: process.env.KV_REST_API_URL!,
   token: process.env.KV_REST_API_TOKEN!,
+  automaticDeserialization: false,
 });
 
 // 스켈레톤 검증용 TTL. 실제 세션 수명은 아직 정하지 않았다.
