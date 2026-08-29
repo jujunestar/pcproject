@@ -172,9 +172,10 @@ export function CompareScreen({
 
   return (
     <main className="screen screen-compare">
-      <button className="link-button" onClick={onBackToAnalysis}>
-        ← 성능 분석 결과
-      </button>
+      <header className="workspace-header">
+        <div className="workspace-brand"><span>⌁</span><strong>TracePC</strong></div>
+        <button className="link-button" onClick={onBackToAnalysis}>성능 분석 결과</button>
+      </header>
 
       <section className="panel">
         <div className="page-heading">

@@ -11,57 +11,11 @@ import { fetchPerformanceStatus, type PerformanceStatus } from "@/lib/performanc
 type View = "start" | "result" | "compare" | "history";
 
 function AppShell({
-  view,
-  onNavigate,
   children,
 }: {
-  view: View;
-  onNavigate: (view: View) => void;
   children: ReactNode;
 }) {
-  const navigation = [
-    { view: "start" as const, label: "시작", detail: "Agent 연결", icon: "⌂" },
-    { view: "result" as const, label: "분석", detail: "Performance Analysis", icon: "⌁" },
-    { view: "compare" as const, label: "비교", detail: "Before / After", icon: "↗" },
-    { view: "history" as const, label: "히스토리", detail: "Analysis History", icon: "◷" },
-  ];
-
-  return (
-    <div className="app-shell">
-      <aside className="app-sidebar">
-        <div className="brand">
-          <span className="brand-mark">⌁</span>
-          <div>
-            <strong>TracePC</strong>
-            <span>PC Performance Analyzer</span>
-          </div>
-        </div>
-        <nav className="sidebar-nav" aria-label="주요 화면">
-          {navigation.map((item) => (
-            <button
-              key={item.view}
-              className={`sidebar-nav-item ${view === item.view ? "is-active" : ""}`}
-              onClick={() => onNavigate(item.view)}
-            >
-              <span className="sidebar-nav-icon">{item.icon}</span>
-              <span>
-                <strong>{item.label}</strong>
-                <small>{item.detail}</small>
-              </span>
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <span className="live-dot" />
-          <div>
-            <strong>TracePC 준비됨</strong>
-            <small>Windows Agent로 측정</small>
-          </div>
-        </div>
-      </aside>
-      <div className="app-content">{children}</div>
-    </div>
-  );
+  return <div className="app-frame">{children}</div>;
 }
 
 export default function Home() {
@@ -173,5 +127,5 @@ export default function Home() {
     );
   }
 
-  return <AppShell view={view} onNavigate={setView}>{screen}</AppShell>;
+  return <AppShell>{screen}</AppShell>;
 }

@@ -46,58 +46,39 @@ export function StartScreen({
 
   return (
     <main className="screen screen-start">
-      <section className="panel panel-intro">
-        <p className="eyebrow">WINDOWS PERFORMANCE MONITORING</p>
+      <header className="workspace-header">
+        <div className="workspace-brand"><span>⌁</span><strong>TracePC</strong></div>
+        <p className={`workspace-connection workspace-connection-${connectionState}`}><i /> {CONNECTION_STATE_TEXT[connectionState]}</p>
+      </header>
+
+      <section className="start-hero">
+        <p className="eyebrow">WINDOWS PERFORMANCE ANALYZER</p>
         <h1>PC 성능을<br />명확하게 확인하세요.</h1>
-        <p>왜 PC가 느린지 측정 근거를 바탕으로 병목 후보를 찾습니다.</p>
-        <p className="muted">CPU / RAM / Disk 세 가지를 측정해 분석합니다.</p>
+        <p>실제 CPU · RAM · Disk 데이터를 측정해<br />PC가 느려지는 병목 후보를 찾습니다.</p>
+        <div className="start-hero-actions">
+          <a href="/downloads/TracePCAgent.exe" download className="button button-secondary">Agent 다운로드</a>
+          <button className="button button-issue" onClick={onIssueCode}>연결 코드 발급</button>
+        </div>
       </section>
 
-      <section className="panel start-step">
-        <h2>1. Windows Agent 다운로드</h2>
-        <a href="/downloads/TracePCAgent.exe" download className="button button-secondary">
-          TracePCAgent.exe 다운로드
-        </a>
+      <section className="connection-workspace">
+        <div className="connection-code-area">
+          <p className="eyebrow">CONNECTION CODE</p>
+          <p className="code-display"><strong>{code || "------"}</strong></p>
+          <p>Agent에 위 코드를 입력하세요.</p>
+        </div>
+        <div className="connection-action-area">
+          <label className="field">연결 코드<input value={inputCode} onChange={(e) => onInputCodeChange(e.target.value)} placeholder="연결 코드" /></label>
+          <button className="button button-secondary" onClick={onCheckConnection} disabled={inputCode === ""}>연결 확인</button>
+          <p className={`status-line status-line-${connectionState}`}>{CONNECTION_STATE_TEXT[connectionState]}</p>
+        </div>
       </section>
 
-      <section className="panel start-step">
-        <h2>2. 연결 코드 발급</h2>
-        <button className="button" onClick={onIssueCode}>
-          연결 코드 발급
-        </button>
-        {code && (
-          <p className="code-display">
-            발급된 코드: <strong>{code}</strong>
-          </p>
-        )}
-      </section>
-
-      <section className="panel start-step">
-        <h2>3. Agent에 코드 입력</h2>
-        <p className="muted">Agent 콘솔 창에 위에서 발급받은 6자리 코드를 입력하세요.</p>
-      </section>
-
-      <section className="panel start-step start-step-connect">
-        <h2>4. 데이터 수신 / 연결 상태</h2>
-        <label className="field">
-          연결 코드
-          <input value={inputCode} onChange={(e) => onInputCodeChange(e.target.value)} placeholder="연결 코드" />
-        </label>
-        <button className="button button-secondary" onClick={onCheckConnection} disabled={inputCode === ""}>
-          연결 확인
-        </button>
-        <p className={`status-line status-line-${connectionState}`}>{CONNECTION_STATE_TEXT[connectionState]}</p>
-      </section>
-
-      <section className="panel panel-cta start-final-cta">
-        <h2>5. 성능 분석 시작</h2>
-        <button className="button button-primary" onClick={onStartAnalysis} disabled={inputCode === ""}>
-          성능 분석 시작
-        </button>
-        <button className="link-button" onClick={onViewHistory} disabled={inputCode === ""}>
-          히스토리 보기
-        </button>
-      </section>
+      <footer className="start-action-footer">
+        <div><p className="eyebrow">READY WHEN YOU ARE</p><h2>연결이 완료되면 분석을 시작하세요.</h2></div>
+        <button className="button button-primary" onClick={onStartAnalysis} disabled={inputCode === ""}>성능 분석 시작</button>
+        <button className="link-button" onClick={onViewHistory} disabled={inputCode === ""}>히스토리 보기</button>
+      </footer>
     </main>
   );
 }

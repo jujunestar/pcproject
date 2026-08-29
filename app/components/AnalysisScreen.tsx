@@ -187,9 +187,10 @@ export function AnalysisScreen({
 
   return (
     <main className="screen screen-analysis">
-      <button className="link-button" onClick={onBackToStart}>
-        ← 시작 화면
-      </button>
+      <header className="workspace-header">
+        <div className="workspace-brand"><span>⌁</span><strong>TracePC</strong></div>
+        <div className="workspace-header-actions"><span className="live-status"><span className="live-dot" /> 실시간 연결</span><button className="link-button" onClick={onBackToStart}>시작 화면</button></div>
+      </header>
 
       {isLoading && <LoadingBody />}
 
