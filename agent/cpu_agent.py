@@ -185,10 +185,33 @@ def collect_process_samples(process_iter_fn):
     return samples
 
 
+SYSTEM_IDLE_PROCESS_PID = 0
+
+
 def pick_top_process(process_samples):
-    if not process_samples:
+    """System Idle Process(Windows PID 0)는 유휴 시간을 나타낼 뿐이라 원인
+    후보에서 항상 제외한다 (psutil은 이 프로세스의 cpu_percent를 코어 수에
+    비례해 수백 %까지 보고할 수 있어, 제외하지 않으면 실제 원인이 아닌데도
+    항상 최상위로 뽑힌다)."""
+    candidates = [s for s in process_samples if s["pid"] != SYSTEM_IDLE_PROCESS_PID]
+    if not candidates:
         return None
-    return max(process_samples, key=lambda sample: sample["cpuPercent"])
+    return max(candidates, key=lambda sample: sample["cpuPercent"])
+
+
+def should_collect_process_samples(overload_result, last_evidence_started_at):
+    """이번 주기에 (비용이 드는) 프로세스 후보 수집을 실행해야 하는지 결정한다.
+
+    CPU 과부하 후보로 확정된 "새로운" 구간에 대해서만 한 번 수집한다 —
+    이미 수집한 것과 같은 구간(evidence.startedAt이 동일)이면 다시 수집하지
+    않는다. 이렇게 해야 프로세스 수집 비용이 매 주기마다 측정 간격에 끼어들어
+    (specs/cpu-overload.md의 MAX_SAMPLE_GAP_SECONDS 판정 자체를 오염시키는)
+    문제를 근본적으로 피할 수 있다.
+    """
+    if overload_result["status"] != STATUS_OVERLOAD_CANDIDATE:
+        return False
+    evidence_started_at = overload_result["evidence"]["startedAt"]
+    return evidence_started_at != last_evidence_started_at
 
 
 def format_overload_status_line(result):

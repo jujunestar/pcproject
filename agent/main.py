@@ -13,12 +13,18 @@ from cpu_agent import (
     is_valid_connection_code,
     measure_cpu_percent,
     pick_top_process,
+    should_collect_process_samples,
     trim_history,
     upload_measurement,
 )
 
 BASE_URL = "https://pcproject-tau.vercel.app"
 MEASURE_INTERVAL_SECONDS = 2
+# 프로세스 후보 수집(프라이밍 + 재측정)에 쓰는 짧은 창. CPU 과부하 후보가
+# "새로 확정된" 주기에만 한 번 실행되므로, 매 주기 실행되는
+# MEASURE_INTERVAL_SECONDS와 달리 판정에 쓰이는 measured_at 간격에
+# 영향을 주지 않는다.
+PROCESS_SAMPLE_SECONDS = 1
 
 
 def real_http_post(url, json_body):
@@ -34,15 +40,10 @@ def main():
     print(f"연결됨 (코드: {code})")
 
     history = []
+    last_evidence_started_at = None
+    cached_top_process = None
 
     while True:
-        processes = list(psutil.process_iter(["pid", "name"]))
-        for proc in processes:
-            try:
-                proc.cpu_percent(None)
-            except Exception:
-                pass
-
         try:
             cpu_percent = measure_cpu_percent(
                 lambda: psutil.cpu_percent(interval=MEASURE_INTERVAL_SECONDS)
@@ -65,8 +66,19 @@ def main():
 
         top_process = None
         if overload_result["status"] == STATUS_OVERLOAD_CANDIDATE:
-            process_samples = collect_process_samples(lambda: processes)
-            top_process = pick_top_process(process_samples)
+            if should_collect_process_samples(overload_result, last_evidence_started_at):
+                processes = list(psutil.process_iter(["pid", "name"]))
+                for proc in processes:
+                    try:
+                        proc.cpu_percent(None)
+                    except Exception:
+                        pass
+                time.sleep(PROCESS_SAMPLE_SECONDS)
+                process_samples = collect_process_samples(lambda: processes)
+                cached_top_process = pick_top_process(process_samples)
+                last_evidence_started_at = overload_result["evidence"]["startedAt"]
+
+            top_process = cached_top_process
             if top_process is not None:
                 print(
                     f"관련 프로세스 후보: {top_process['name']} "

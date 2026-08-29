@@ -2,123 +2,122 @@
 
 ## 오늘 완료한 상태
 
-### 1~3. CPU 성능 분석 vertical slice (SESSION 앞부분, 커밋 `61e169a`)
+### 1~3. CPU 성능 분석 vertical slice (커밋 `61e169a`)
 
 `PLAN.md` 기능 3(CPU 과부하 원인 후보 + 관련 프로세스 + 측정 근거)을
-SPEC → TDD → 구현 → exe 재빌드 → production 배포까지 완료했다.
+SPEC → TDD → 구현 → exe 재빌드 → production 배포까지 완료.
 
-- `specs/cpu-overload.md` 구현: `agent/cpu_agent.py`에
-  `evaluate_overload_status`/`trim_history`/`format_overload_status_line`.
-- `specs/cpu-process-candidates.md` 신규 작성 및 구현:
-  `collect_process_samples`/`pick_top_process`, 과부하 후보 주기에만
-  프로세스 후보 수집.
-- 웹 `/api/data` payload에 `overloadStatus`/`overloadEvidence`/
-  `topProcess` 추가, `lib/cpu-status.ts` 파싱 확장,
-  `app/page.tsx` 5단계를 "성능 분석"으로 변경.
+### 4. 1차 버그 수정: 실제 부하에서도 데이터 부족만 뜨던 문제 (커밋 `0d58cf3`)
 
-### 4. **버그 발견 및 수정: 실제 부하 상황에서 CPU 과부하 후보가 뜨지 않음**
+실제 `main.py`를 부하 없이 실행해 외부에서 실측한 결과, 프로세스 후보
+프라이밍 + 업로드 왕복 때문에 측정 간격이 부하 없이도 2.7~4.6초까지
+벌어져 있었고, `MAX_SAMPLE_GAP_SECONDS=4.0`이 그보다 좁아 구간이
+계속 끊김을 확인. `10.0`으로 수정, 실측 간격 기반 회귀 테스트 추가.
 
-**증상**: 사용자가 production에서 실제로 CPU를 90% 이상으로 5초 넘게
-유지했는데도 웹의 [성능 분석]이 계속 `CPU 과부하 근거 없음`/
-`데이터 부족`만 표시하고 `CPU 과부하 후보`로 바뀌지 않음을 보고.
+### 5. 2차 버그 수정: 실제 production 100% 부하에서도 여전히 데이터
+부족만 뜨던 문제 + topProcess 신뢰성 문제
 
-**디버깅 과정** (자동 테스트 통과만으로 정상 판단하지 않고 실제 경로
-추적):
-- 코드 수정 없이 `agent/main.py`를 실제로 실행하며 각 콘솔 출력 줄의
-  도착 시각을 외부에서 타임스탬프로 기록 → 연속된 CPU 측정
-  (`measured_at`) 사이의 실제 간격이 이상적인 2.0초가 아니라
-  **2.7~4.6초**까지 벌어짐을 실측으로 확인 (부하가 전혀 없는
-  상태에서도).
-- 그 간격의 출처를 분리 측정: 매 주기 프로세스 후보 수집을 위한
-  프로세스 전수 프라이밍(`for proc in processes: proc.cpu_percent(None)`,
-  276개 프로세스 기준 약 0.44~0.55초)과 production 업로드 HTTP
-  왕복(약 0.65~0.93초)이 psutil의 2.0초 블로킹 측정 위에 추가로
-  더해지는 것을 확인.
-- 그 실측 간격을 그대로 `evaluate_overload_status`에 넣어보면(코드
-  수정 전) 95% 4개 연속 샘플임에도 `insufficient-data`가 반환됨을
-  재현 — `MAX_SAMPLE_GAP_SECONDS=4.0`이 실제 측정 간격보다 좁아서
-  4.553초짜리 정상적인 주기 지연조차 "공백"으로 취급해 구간을
-  끊어버리고 있었음.
+**증상**: 1차 수정 반영 후에도, 사용자가 production에서 실제로 CPU
+100%를 여러 번 연속 측정했는데 Agent 콘솔과 웹 모두 계속
+`데이터 부족`을 유지.
 
-**정확한 원인**: `specs/cpu-overload.md`가 `MAX_SAMPLE_GAP_SECONDS`를
-"`MEASURE_INTERVAL_SECONDS(2.0초)`의 2배 = 4.0초"로 고정했는데, 이는
-"매 측정 주기가 약 2초"라는 가정에 의존한다. 이번 세션 앞부분에서
-고CPU 프로세스 후보 수집 기능을 추가하며 `agent/main.py`의 매 주기에
-전체 프로세스 프라이밍과 (원래도 있던) 네트워크 업로드가 더해졌고,
-그 결과 실제 주기가 2.7~4.6초로 늘어나 `MAX_SAMPLE_GAP_SECONDS(4.0)`를
-일상적으로 초과하게 됐다. 90%+ CPU가 실제로 몇 초씩 지속되더라도,
-매 정상 주기의 간격 자체가 "공백"으로 오판되어 구간이 계속 끊기므로
-5초 지속 조건에 도달할 수 없었다 — 즉 실전에서 `overload-candidate`
-분기가 사실상 도달 불가능했다.
+**디버깅**: 코드 수정 없이 결론 내리지 않고, 실제 `agent/main.py`와
+동일한 로직을 그대로 따라가는 안전한 재현 스크립트를 작성했다 —
+`psutil.cpu_percent`만 "항상 100.0을 반환하되 실제 psutil처럼 2초
+블로킹"하도록 감시(monkeypatch)해서, **위험한 실제 CPU 부하를
+만들지 않고도** 실제 프로세스 전수 프라이밍 오버헤드·실제 production
+업로드 왕복 시간까지 포함한 진짜 루프 타이밍으로 "CPU 100%가 여러 번
+연속 측정된 상황"을 재현했다. 매 반복마다 요청받은 모든 값(측정
+timestamp, cpuPercent, history 길이, trim 전/후 history,
+evaluate_overload_status 입력/출력, 각 구간 사이 gap과 어느 지점에서
+끊겼는지)을 출력했다.
 
-**왜 자동 테스트에서 잡히지 않았는가**: `evaluate_overload_status`의
-기존 39개 테스트는 모두 손으로 만든 "이상적으로 정확히 몇 초씩
-떨어진" 타임스탬프(0/2/4/6초 등)만 사용했다. 순수 함수 자체의 판정
-로직(임계값·지속시간·공백 규칙)은 정확히 구현돼 있었으므로 그
-테스트들은 모두 통과했지만, **`agent/main.py`가 실제로 만들어내는
-`measured_at` 간격이 그 가정과 얼마나 다른지는 어떤 자동 테스트도
-검증하지 않았다.** 즉 버그는 순수 함수 안이 아니라 "순수 함수가
-가정한 입력 분포"와 "실제 프로그램이 만드는 입력 분포"의 불일치에
-있었고, 이는 실제 프로그램을 실행해 실측하지 않으면 드러나지 않는
-종류였다.
+**확인된 사실**:
+- `evaluate_overload_status` 자체 로직과 `MAX_SAMPLE_GAP_SECONDS=10.0`은
+  현실적인 간격(3.7~4.9초)에서 정상적으로 3번째 샘플 만에
+  `overload-candidate`를 반환함 — 판정 로직 자체는 문제가 없었다.
+- `history`는 루프마다 정상적으로 누적되고 있었고(초기화/리셋 없음),
+  `trim_history`도 과도하게 지우지 않았으며, wall-clock/monotonic
+  혼용도 없었다.
+- **진짜 남은 문제는 설계 자체**: 프로세스 후보 프라이밍
+  (`for proc in processes: proc.cpu_percent(None)`)이 **매 루프
+  주기마다 무조건** 실행되고 있었다 — 과부하 여부와 무관하게. 이
+  프라이밍은 실측 약 0.4~0.9초가 걸리는데, 이 비용이 "과부하 판정에
+  직접 쓰이는" `measured_at` 간격 자체에 매번 끼어들고 있었다.
+  실제 100% 부하 상황에서는 OS 스케줄러 경합으로 이 프라이밍
+  syscall들이 훨씬 느려질 수 있는데, 하필 그 비용이 판정이 가장
+  정확해야 하는 바로 그 구간(고CPU 지속 여부를 확인하는 구간)의
+  타이밍을 매번 갉아먹는 구조였다. 즉 "감지하려는 상황(고부하) 자체가
+  감지 도구의 정확도를 떨어뜨리는" 자기파괴적 설계였다.
+- **추가로 발견한 별도 버그**: `pick_top_process`가 필터링 없이
+  `cpuPercent`가 가장 높은 프로세스를 그대로 골랐는데, Windows의
+  `System Idle Process`(PID 0)는 psutil이 코어 수에 비례해 수백 %까지
+  보고할 수 있어(유휴 시간을 나타내는 값일 뿐 실제 작업이 아님)
+  거의 항상 "1위"로 뽑혀버렸다. 실제 재현 스크립트 업로드 결과
+  `topProcess: {"pid": 0, "name": "System Idle Process", "cpuPercent": 686.4}`
+  로 production Redis에 그대로 저장되는 것을 확인 — 원인 후보로 절대
+  제시돼서는 안 되는 값이 표시되는 명백한 버그였다.
 
-**수정** (최소 수정, 판정 조건 완화가 아닌 잘못된 가정 교정):
-- `agent/cpu_agent.py`: `MAX_SAMPLE_GAP_SECONDS`를 `4.0` → `10.0`으로
-  수정. 실제 한 주기 길이(약 4~5초)의 2배 수준으로, "한 주기 분량의
-  지연은 흡수하되 그 이상은 흡수하지 않는다"는 원래 스펙의 취지를
-  실제 측정값 기준으로 다시 맞춘 것이지, 90%/5초라는 판정 기준 자체를
-  낮춘 것이 아니다.
-- `specs/cpu-overload.md`: `MAX_SAMPLE_GAP_SECONDS` 표에 실측 근거와
-  버그 수정 이력을 기록.
-- `agent/test_cpu_agent.py`:
-  - 회귀 테스트 추가
-    (`test_evaluate_overload_status_overload_candidate_with_realistic_agent_loop_gaps`):
-    실제 `agent/main.py`를 부하 없이 실행해 외부에서 실측한 간격
-    (2.698s / 4.553s / 3.467s)을 그대로 사용해 95% 4개 연속 샘플이
-    `overload-candidate`로 판정돼야 함을 검증. 수정 전 코드로 이
-    테스트를 실행하면 실패함을 먼저 확인(RED)한 뒤 상수를 고쳐
-    통과(GREEN)시켰다.
-  - 기존 공백 경계 테스트 2개를 `MAX_SAMPLE_GAP_SECONDS` 상수를
-    직접 참조하도록 수정해, 상수가 다시 바뀌어도 경계 테스트가
-    자동으로 그 값을 따라가도록 함.
+**수정** (상수를 더 늘리지 않고, 실제 원인인 설계를 고침):
+- `agent/main.py`: 프로세스 프라이밍/수집을 **매 루프에서 분리**했다.
+  이제 핵심 측정 루프(시스템 CPU 측정 → history → 판정 → 업로드)는
+  프로세스 관련 작업을 전혀 하지 않는다. 프로세스 후보 수집은
+  `evaluate_overload_status`가 **새로운** `overload-candidate` 구간을
+  막 확정한 바로 그 주기에만, 그것도 한 번만 실행된다(같은 구간에
+  대해 반복 수집하지 않음 — `last_evidence_started_at`으로 추적).
+  이로써 프로세스 수집 비용이 판정에 쓰이는 측정 간격을 절대
+  오염시킬 수 없다.
+- `agent/cpu_agent.py`:
+  - `should_collect_process_samples(overload_result, last_evidence_started_at)`
+    신규 추가 — 위 "언제 수집할지" 결정을 순수 함수로 분리해 TDD.
+  - `pick_top_process`가 `SYSTEM_IDLE_PROCESS_PID(=0)`를 후보에서
+    항상 제외하도록 수정.
+- `agent/test_cpu_agent.py`: 회귀 테스트 추가
+  (`test_pick_top_process_excludes_system_idle_process_even_if_highest`,
+  `test_pick_top_process_returns_none_when_only_system_idle_process`,
+  `should_collect_process_samples`용 5개 테스트).
 
-**검증**
-- `python -m pytest`: 40개 전체 통과 (회귀 테스트 포함).
-- `npm test`(13개) / `npm run typecheck` / `npm run build` 모두 통과
-  (웹 코드는 이번 수정과 무관, 회귀 없음 재확인).
-- exe 재빌드(`pyinstaller ... agent/main.py`) →
-  `public/downloads/TracePCAgent.exe` 교체 → 로컬에서 새 exe를
-  직접 실행해 정상 상태 payload가 여전히 production에 정상
-  업로드됨을 확인.
-- commit / push 완료, Vercel production 재배포.
+**검증**:
+- 수정 전/후 모두 안전한 재현 스크립트(실제 psutil 부하 없이, 실제
+  main.py 로직 그대로)로 비교. 수정 후: 빌드업 구간 간격이
+  2.6~2.8초로 훨씬 촘촘해졌고(수정 전 3.7~4.9초), 3번째 샘플 만에
+  `overload-candidate` 확정, `topProcess`는 실제 프로세스
+  (`python.exe`, 재현 스크립트 자기 자신)로 정상 표시됨을 확인.
+  production `/api/data`에서도 동일하게 확인
+  (`overloadStatus: "overload-candidate"`, `overloadEvidence` 채워짐,
+  `topProcess`가 더 이상 System Idle Process가 아님).
+- `python -m pytest`: 47개 전체 통과.
+- `npm test`(13개) / `npm run typecheck` / `npm run build` 모두 통과.
+- exe 재빌드 → `public/downloads/TracePCAgent.exe` 교체.
+  - 새 exe SHA256: `8dd0007d9f4e94552901e34aa498ec5e836ae528626805486f84a598df33859c`
+  - 크기: 12,103,500 bytes
+- 새 exe를 로컬에서 실제로 실행해 정상 경로(실제 ambient CPU,
+  `overloadStatus: "normal"`) 재확인.
+- commit / push 완료, Vercel production 재배포, production에서
+  다운로드한 exe 크기가 새 빌드와 일치함을 확인.
 
-**production에서 확인해야 할 것 (사용자가 직접 실제 부하 테스트로
-검증)**: 연결 코드로 Agent를 실행한 뒤 CPU를 90% 이상으로 5초 이상
-유지하면서,
-1. Agent 콘솔에 `상태: CPU 과부하 후보 (NN.N%, HH:MM:SS~HH:MM:SS,
-   N.N초 지속)` 줄이 실제로 출력되는지,
-2. `관련 프로세스 후보: ...` 줄이 함께 출력되는지,
-3. 같은 코드로 `GET /api/data`를 조회했을 때 `overloadStatus`가
-   `"overload-candidate"`이고 `overloadEvidence`/`topProcess`가
-   `null`이 아닌지,
-4. 웹 [성능 분석] 화면에 `CPU 과부하 후보`와 판정 근거·관련
-   프로세스 후보가 표시되는지.
-
-이번 세션에서는 위험한 인위적 고부하를 자동 생성하지 않았으므로,
-`overload-candidate` 경로 자체는 (a) 실제 agent 루프에서 실측한
-간격을 그대로 사용한 회귀 테스트와 (b) 정상/데이터 부족 경로의
-production 실측으로 검증했고, 실제 90%+ 5초 지속 화면 표시는 다음에
-사용자가 직접 부하를 걸어 확인해야 한다.
+**production에서 여전히 직접 확인이 필요한 것**: 이번에도 위험한
+실제 CPU 100% 부하는 직접 만들지 않았다. `overload-candidate` 경로와
+`topProcess` 신뢰성은 (a) 실제 main.py 로직을 그대로 따라가되
+CPU 퍼센트만 안전하게 흉내낸 재현 스크립트로 production API까지
+포함해 검증했고, (b) 정상 경로는 새 exe로 실측 검증했다. 실제
+사용자의 CPU 100% 부하 상황에서 웹 화면에 "CPU 과부하 후보 + CPU
+사용률 + 지속시간 근거 + 측정 시각 + 관련 프로세스 후보(이름/PID/
+CPU%)"가 모두 함께 표시되는지는 사용자가 직접 재확인해야 한다.
 
 ## 현재 상태 (production 기준)
 
-`PLAN.md` 기능 1~3이 모두 production에 배포돼 있고, 위 버그 수정도
-반영된 exe/웹이 배포된 상태다. 다만 `CPU 과부하 후보` 표시 자체는
-사용자의 실제 부하 테스트로 아직 육안 재확인되지 않았다.
+`PLAN.md` 기능 1~3이 production에 배포돼 있고, 이번 세션에서 발견된
+두 차례의 실제 부하 관련 버그(측정 간격 임계값, 프로세스 수집 설계,
+System Idle Process 오염)를 모두 수정해 반영했다. 다만
+`overload-candidate` 상태의 실제 화면 표시는 아직 사용자의 직접적인
+실제 부하 테스트로 최종 확인되지 않았다.
 
 ## 다음 세션 Next Step
 
-1. 사용자가 실제로 CPU 90%+/5초 이상 부하를 걸어 위 "production에서
-   확인해야 할 것" 4가지를 직접 확인 — 이 확인 전까지는 RAM/Disk 등
-   다음 기능을 시작하지 않는다.
+1. 사용자가 실제로 CPU 90%+/5초 이상 부하를 걸어, 웹 [성능 분석]
+   화면에 `CPU 과부하 후보` + CPU 사용률 + 지속시간 근거 + 측정
+   시각 + 관련 프로세스 후보(이름/PID/CPU%)가 모두 함께 표시되는지
+   최종 확인 — 이 확인 전까지는 RAM/Disk 등 다음 기능을 시작하지
+   않는다.
 2. 확인되면 RAM / Disk 분석, 최종 UI 디자인 등 다음 범위 논의.

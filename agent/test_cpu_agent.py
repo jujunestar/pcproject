@@ -15,6 +15,7 @@ from cpu_agent import (
     is_valid_connection_code,
     measure_cpu_percent,
     pick_top_process,
+    should_collect_process_samples,
     trim_history,
     upload_measurement,
 )
@@ -479,6 +480,69 @@ def test_pick_top_process_returns_first_on_tie():
         {"pid": 2, "name": "b.exe", "cpuPercent": 50.0},
     ]
     assert pick_top_process(samples) == {"pid": 1, "name": "a.exe", "cpuPercent": 50.0}
+
+
+def test_pick_top_process_excludes_system_idle_process_even_if_highest():
+    """회귀: System Idle Process(Windows PID 0)는 유휴 시간을 나타낼 뿐 실제
+    작업으로 인한 CPU 사용이 아니므로, 절대 "원인 후보"로 뽑혀서는 안 된다.
+    psutil은 이 프로세스의 cpu_percent를 코어 수에 비례해 수백 %까지 보고할
+    수 있어, 필터링하지 않으면 항상 최상위로 뽑히는 문제가 있었다."""
+    samples = [
+        {"pid": 0, "name": "System Idle Process", "cpuPercent": 686.4},
+        {"pid": 1234, "name": "powershell.exe", "cpuPercent": 61.8},
+    ]
+    assert pick_top_process(samples) == {
+        "pid": 1234,
+        "name": "powershell.exe",
+        "cpuPercent": 61.8,
+    }
+
+
+def test_pick_top_process_returns_none_when_only_system_idle_process():
+    samples = [{"pid": 0, "name": "System Idle Process", "cpuPercent": 700.0}]
+    assert pick_top_process(samples) is None
+
+
+# --- should_collect_process_samples (언제 프로세스 후보 수집을 실행할지) ---
+
+
+def test_should_collect_process_samples_false_when_not_overload_candidate():
+    result = {"status": "normal", "evidence": None}
+    assert should_collect_process_samples(result, last_evidence_started_at=None) is False
+
+
+def test_should_collect_process_samples_false_for_insufficient_data():
+    result = {"status": "insufficient-data", "evidence": None}
+    assert should_collect_process_samples(result, last_evidence_started_at=None) is False
+
+
+def test_should_collect_process_samples_true_on_first_overload_detection():
+    result = {
+        "status": "overload-candidate",
+        "evidence": {"startedAt": "2026-08-29T00:00:00Z", "endedAt": "x", "durationSeconds": 6, "maxCpuPercent": 95},
+    }
+    assert should_collect_process_samples(result, last_evidence_started_at=None) is True
+
+
+def test_should_collect_process_samples_false_when_same_episode_already_collected():
+    result = {
+        "status": "overload-candidate",
+        "evidence": {"startedAt": "2026-08-29T00:00:00Z", "endedAt": "x", "durationSeconds": 6, "maxCpuPercent": 95},
+    }
+    already_collected_for = "2026-08-29T00:00:00Z"
+    assert should_collect_process_samples(result, last_evidence_started_at=already_collected_for) is False
+
+
+def test_should_collect_process_samples_true_when_new_overload_episode_starts():
+    result = {
+        "status": "overload-candidate",
+        "evidence": {"startedAt": "2026-08-29T00:05:00Z", "endedAt": "x", "durationSeconds": 6, "maxCpuPercent": 95},
+    }
+    collected_for_previous_episode = "2026-08-29T00:00:00Z"
+    assert (
+        should_collect_process_samples(result, last_evidence_started_at=collected_for_previous_episode)
+        is True
+    )
 
 
 def test_format_overload_status_line_overload_candidate():
