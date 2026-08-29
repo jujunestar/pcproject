@@ -14,23 +14,267 @@ body {
     "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
 
-.hero {
-  min-height: 100dvh;
+/* 와이어프레임 단계: grayscale만 사용, 색상/브랜드 폰트/아이콘/애니메이션 없음. */
+
+.screen {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  text-align: center;
-  padding: 1.5rem;
+  gap: 1rem;
 }
 
-.hero h1 {
-  font-size: 2.5rem;
+.panel {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.panel h1 {
+  font-size: 1.75rem;
   font-weight: 700;
 }
 
-.hero p {
-  font-size: 1.125rem;
-  color: #555;
+.panel h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.panel-intro {
+  border-style: dashed;
+}
+
+.panel-diagnosis {
+  border-width: 2px;
+  border-color: #000;
+}
+
+.panel-cta {
+  align-items: flex-start;
+}
+
+.panel-loading {
+  align-items: center;
+  text-align: center;
+}
+
+.panel-empty {
+  border-style: dashed;
+  text-align: center;
+}
+
+.panel-detail {
+  border-color: #ddd;
+  color: #333;
+}
+
+.muted {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.diagnosis-headline {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.overall-message {
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-top: 1px solid #ccc;
+  padding-top: 0.5rem;
+}
+
+.candidate-detail {
+  border-left: 3px solid #000;
+  padding-left: 0.75rem;
+}
+
+.button {
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  width: fit-content;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.button:disabled {
+  border-color: #bbb;
+  color: #bbb;
+  cursor: not-allowed;
+}
+
+.button-primary {
+  background: #000;
+  color: #fff;
+}
+
+.button-secondary {
+  background: #f2f2f2;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #333;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+  width: fit-content;
+  padding: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.field input {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.code-display {
+  font-size: 1.1rem;
+}
+
+.status-line {
+  border-top: 1px dashed #ccc;
+  padding-top: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.status-line-connected {
+  font-weight: 700;
+}
+
+.status-line-connection-failed {
+  font-style: italic;
+}
+
+.loading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.loading-card {
+  border: 1px dashed #999;
+  border-radius: 4px;
+  padding: 1rem 0.5rem;
+  text-align: center;
+  color: #666;
+}
+
+.recommendation-title {
+  font-weight: 700;
+}
+
+.usage-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.usage-graph-title {
+  font-size: 0.85rem;
+  color: #444;
+  font-weight: 700;
+}
+
+.usage-graph-svg {
+  width: 100%;
+  height: auto;
+  border: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.usage-graph-line {
+  fill: none;
+  stroke: #000;
+  stroke-width: 2;
+}
+
+.usage-graph-threshold {
+  stroke: #999;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.usage-graph-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+
+.usage-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.usage-graph-swatch {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0;
+  border-top: 2px solid #000;
+}
+
+.usage-graph-swatch-ram {
+  border-top-style: dashed;
+}
+
+.usage-graph-swatch-disk {
+  border-top-style: dotted;
+}
+
+.usage-graph-caption {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.usage-graph-evidence {
+  font-size: 0.85rem;
+  color: #333;
+}
+
+.compare-graph-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.compare-table th,
+.compare-table td {
+  border: 1px solid #ddd;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+@media (max-width: 480px) {
+  .loading-grid,
+  .compare-graph-grid {
+    grid-template-columns: 1fr;
+  }
 }
