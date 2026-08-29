@@ -123,6 +123,7 @@ export function AnalysisScreen({
   status,
   isLoading,
   onStatusUpdate,
+  onSamplesChange,
   onRequestReanalysis,
   onBackToStart,
 }: {
@@ -130,11 +131,21 @@ export function AnalysisScreen({
   status: PerformanceStatus | null;
   isLoading: boolean;
   onStatusUpdate: (status: PerformanceStatus) => void;
+  onSamplesChange: (samples: LiveSample[]) => void;
   onRequestReanalysis: () => void;
   onBackToStart: () => void;
 }) {
   const [samples, setSamples] = useState<LiveSample[]>([]);
   const [consecutiveFailureCount, setConsecutiveFailureCount] = useState(0);
+
+  // 화면③이 "조치 전" 그래프에 이 화면에서 이미 수집한 실제 시계열을
+  // 그대로 재사용할 수 있도록, samples가 바뀔 때마다 부모(page.tsx)에도
+  // 알려준다. onSamplesChange는 page.tsx에서 useState의 raw setter를
+  // 그대로 넘겨주는 안정적인(레퍼런스가 안 바뀌는) 함수라, 이 effect가
+  // 매 렌더마다 다시 실행되는 문제는 없다.
+  useEffect(() => {
+    onSamplesChange(samples);
+  }, [samples, onSamplesChange]);
 
   // 화면②를 보고 있고(mount) + 최초 로딩이 끝났고 + 탭이 visible인 동안만
   // 2000ms 간격으로 최신 데이터를 확인한다. 코드/구현 근거는
@@ -219,10 +230,37 @@ export function AnalysisScreen({
         return (
           <>
             <section className="panel panel-diagnosis">
+              <div className="page-heading">
+                <div>
+                  <p className="eyebrow">REAL-TIME PERFORMANCE MONITORING</p>
+                  <h1>성능 분석</h1>
+                  <p className="muted">최신 시스템 측정값을 기반으로 병목 후보를 분석합니다.</p>
+                </div>
+                <span className="live-status"><span className="live-dot" /> 실시간 측정 중</span>
+              </div>
               <h2>종합 진단</h2>
               {renderComprehensiveDiagnosis(diagnosis)}
             </section>
 
+            <section className="resource-summary-grid" aria-label="현재 리소스 사용량">
+              <article className="resource-summary-card resource-cpu">
+                <p>CPU 사용량</p>
+                <strong>{status.cpuPercent.toFixed(1)}%</strong>
+                <span>{OVERLOAD_STATUS_TEXT[status.overloadStatus]}</span>
+              </article>
+              <article className="resource-summary-card resource-ram">
+                <p>메모리 사용량</p>
+                <strong>{status.ram?.percent !== null && status.ram?.percent !== undefined ? `${status.ram.percent.toFixed(1)}%` : "-"}</strong>
+                <span>{status.ram === null ? "데이터 부족" : RAM_STATUS_TEXT[status.ram.status]}</span>
+              </article>
+              <article className="resource-summary-card resource-disk">
+                <p>Disk 활성 시간</p>
+                <strong>{status.disk?.activePercent !== null && status.disk?.activePercent !== undefined ? `${status.disk.activePercent.toFixed(1)}%` : "-"}</strong>
+                <span>{status.disk === null ? "데이터 부족" : DISK_IO_STATUS_TEXT[status.disk.ioStatus]}</span>
+              </article>
+            </section>
+
+            <div className="analysis-insights-grid">
             <section className="panel panel-graph">
               <h2>실시간 사용량</h2>
               <p className="muted">최신 측정값을 자동으로 확인하고 있습니다.</p>
@@ -250,6 +288,7 @@ export function AnalysisScreen({
                 </ul>
               )}
             </section>
+            </div>
 
             <section className="panel panel-cta">
               <button className="button button-primary" onClick={onRequestReanalysis}>
@@ -257,6 +296,7 @@ export function AnalysisScreen({
               </button>
             </section>
 
+            <div className="detail-grid">
             <section className="panel panel-detail">
               <h2>CPU</h2>
               <p>상태: {OVERLOAD_STATUS_TEXT[status.overloadStatus]}</p>
@@ -339,6 +379,7 @@ export function AnalysisScreen({
                 </>
               )}
             </section>
+            </div>
           </>
         );
       })()}

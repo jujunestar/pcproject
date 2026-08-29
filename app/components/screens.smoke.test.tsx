@@ -95,6 +95,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={null}
         isLoading
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -109,6 +110,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={{ status: "no-data" }}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -123,6 +125,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={{ status: "fetch-failed" }}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -137,6 +140,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={baseReceived()}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -151,6 +155,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={allInsufficientData}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -165,6 +170,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={cpuCandidate}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -186,6 +192,7 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
         status={tiedCandidates}
         isLoading={false}
         onStatusUpdate={noop}
+        onSamplesChange={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -260,14 +267,26 @@ describe("CompareScreen 와이어프레임 상태", () => {
 
   it("previousStatus 없음(empty state)을 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <CompareScreen code="ABC123" previousStatus={null} onStatusUpdate={noop} onBackToAnalysis={noop} />
+      <CompareScreen
+        code="ABC123"
+        previousStatus={null}
+        previousSamples={[]}
+        onStatusUpdate={noop}
+        onBackToAnalysis={noop}
+      />
     );
     expect(html).toContain("비교할 이전 분석 결과가 없습니다");
   });
 
   it("previousStatus가 있으면 새 측정값을 기다리는 상태로 시작한다 (SSR은 useEffect/폴링을 실행하지 않으므로 이 상태만 확인 가능 — ready/stalled는 production 수동 확인)", () => {
     const html = renderToStaticMarkup(
-      <CompareScreen code="ABC123" previousStatus={baseReceived()} onStatusUpdate={noop} onBackToAnalysis={noop} />
+      <CompareScreen
+        code="ABC123"
+        previousStatus={baseReceived()}
+        previousSamples={[]}
+        onStatusUpdate={noop}
+        onBackToAnalysis={noop}
+      />
     );
     expect(html).toContain("새 측정값을 기다리는 중입니다");
   });

@@ -9,10 +9,16 @@ type ReceivedStatus = Extract<PerformanceStatus, { status: "received" }>;
 
 const POLL_INTERVAL_MS = 2000;
 // 15회 * 2000ms = 최대 30초. "짧게 기다리되 무한 polling 금지" — 이
-// 시간 안에 새 measuredAt이 오지 않으면 조용히 포기하고 재시도 버튼을
-// 보여준다.
+// 시간 안에 새 measuredAt이 처음 도착하지 않으면 조용히 포기하고
+// 재시도 버튼을 보여준다.
 const MAX_ATTEMPTS = 15;
+// 새 measuredAt을 "처음" 찾은 뒤에도, 그래프가 실제 변화를 보여줄 수
+// 있도록 서로 다른 sample을 몇 개 더 모은다(목표 3개). 다만 이것도
+// 무한정 기다리지 않도록 추가로 최대 5회(10초)까지만 더 기다린다.
+const TARGET_AFTER_SAMPLES = 3;
+const MAX_EXTRA_ATTEMPTS = 5;
 const MAX_AFTER_SAMPLES = 20;
+const MAX_BEFORE_SAMPLES = 20;
 
 type Outcome =
   | { kind: "waiting" }
@@ -45,16 +51,27 @@ function usageValuesOf(status: ReceivedStatus) {
 export function CompareScreen({
   code,
   previousStatus,
+  previousSamples,
   onStatusUpdate,
   onBackToAnalysis,
 }: {
   code: string;
   previousStatus: PerformanceStatus | null;
+  previousSamples: LiveSample[];
   onStatusUpdate: (status: PerformanceStatus) => void;
   onBackToAnalysis: () => void;
 }) {
   const [before, setBefore] = useState<ReceivedStatus | null>(
     previousStatus !== null && previousStatus.status === "received" ? previousStatus : null
+  );
+  // 화면②에서 이미 수집된 실제 시계열(previousSamples)을 Before
+  // 그래프에 그대로 재사용한다. before 값 자체가 이미 그 시계열의
+  // 마지막 항목과 같은 measuredAt일 것이므로(같은 상태 객체), 표의
+  // Before 대표값과 그래프의 마지막 점이 항상 일치하도록 before를
+  // 다시 한 번 append해서 보정한다(이미 마지막이면 중복 추가되지
+  // 않는다 — appendSampleIfNew 참고).
+  const [beforeSeries, setBeforeSeries] = useState<LiveSample[]>(() =>
+    before !== null ? appendSampleIfNew(previousSamples, before, MAX_BEFORE_SAMPLES) : []
   );
   const [retryToken, setRetryToken] = useState(0);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "waiting" });
@@ -82,8 +99,25 @@ export function CompareScreen({
 
     setOutcome({ kind: "waiting" });
     let afterSeries: LiveSample[] = [];
+    let latestAfterStatus: ReceivedStatus | null = null;
+    let foundNewMeasurement = false;
+    // 전환(새 measuredAt을 처음 찾은 시점) 이전에도 afterSeries에는
+    // before와 같은 값의 "대기 중" 점이 하나 남아있을 수 있다. 목표
+    // 3개는 그 대기 중 점을 세지 않고, 전환 이후 새로 쌓인 서로 다른
+        // sample 개수만 센다 — 그래서 baselineLength를 전환 시점에
+    // 따로 기록해둔다.
+    let baselineLength = 0;
     let attempts = 0;
+    let extraAttempts = 0;
     let stopped = false;
+
+    function finalize() {
+      if (latestAfterStatus === null) return;
+      onStatusUpdateRef.current(latestAfterStatus);
+      setOutcome({ kind: "ready", after: latestAfterStatus, afterSeries });
+      stopped = true;
+      controller.stop();
+    }
 
     async function tick() {
       if (stopped) return;
@@ -94,19 +128,34 @@ export function CompareScreen({
         afterSeries = appendSampleIfNew(afterSeries, result, MAX_AFTER_SAMPLES);
       }
 
-      if (before !== null && hasNewMeasurement(before, result)) {
-        onStatusUpdateRef.current(result);
-        setOutcome({ kind: "ready", after: result, afterSeries });
-        stopped = true;
-        controller.stop();
-        return;
+      if (!foundNewMeasurement) {
+        if (result.status === "received" && before !== null && hasNewMeasurement(before, result)) {
+          foundNewMeasurement = true;
+          latestAfterStatus = result;
+          // 방금 추가된 이 새 sample 자체는 "전환 이후 수집분" 1개로
+          // 친다 — afterSeries.length - baselineLength가 이 tick에서
+          // 정확히 1이 되도록 기준선을 하나 앞에 둔다.
+          baselineLength = afterSeries.length - 1;
+        } else {
+          attempts += 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            setOutcome({ kind: "stalled" });
+            stopped = true;
+            controller.stop();
+          }
+          return;
+        }
+      } else if (result.status === "received") {
+        latestAfterStatus = result;
       }
 
-      attempts += 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        setOutcome({ kind: "stalled" });
-        stopped = true;
-        controller.stop();
+      // 새 measuredAt은 이미 찾았다 — 그래프가 실제 변화를 보여줄 수
+      // 있도록 전환 이후로 서로 다른 sample을 TARGET_AFTER_SAMPLES개까지
+      // 더 모은다. 다만 이 단계도 무한정 기다리지 않는다.
+      extraAttempts += 1;
+      const collectedSinceTransition = afterSeries.length - baselineLength;
+      if (collectedSinceTransition >= TARGET_AFTER_SAMPLES || extraAttempts >= MAX_EXTRA_ATTEMPTS) {
+        finalize();
       }
     }
 
@@ -128,7 +177,14 @@ export function CompareScreen({
       </button>
 
       <section className="panel">
-        <h1>조치 전후 비교</h1>
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">MEASUREMENT COMPARISON</p>
+            <h1>조치 전후 비교</h1>
+            <p className="muted">새로운 실제 측정값으로 변화와 병목 상태를 비교합니다.</p>
+          </div>
+          <span className="comparison-arrow">Before <b>→</b> After</span>
+        </div>
       </section>
 
       {before === null && (
@@ -164,11 +220,10 @@ export function CompareScreen({
           const comparison = compareDiagnosis(before, after);
           const beforeValues = usageValuesOf(before);
           const afterValues = usageValuesOf(after);
-          const beforeSeries = appendSampleIfNew([], before, 1);
 
           return (
             <>
-              <section className="panel panel-diagnosis">
+              <section className="panel panel-diagnosis panel-comparison-summary">
                 <h2>가장 큰 변화</h2>
                 {comparison.headlineChange ? (
                   <>
@@ -229,7 +284,15 @@ export function CompareScreen({
               </section>
 
               <section className="panel panel-cta">
-                <button className="button button-primary" onClick={() => setBefore(after)}>
+                <button
+                  className="button button-primary"
+                  onClick={() => {
+                    // 이번 회차의 After 실측 시계열이 다음 회차의 Before가
+                    // 된다 — fake 데이터를 새로 만들지 않는다.
+                    setBeforeSeries(outcome.afterSeries);
+                    setBefore(after);
+                  }}
+                >
                   다시 분석
                 </button>
               </section>

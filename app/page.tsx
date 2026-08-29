@@ -1,13 +1,68 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AnalysisScreen } from "@/app/components/AnalysisScreen";
 import { CompareScreen } from "@/app/components/CompareScreen";
 import { HistoryScreen } from "@/app/components/HistoryScreen";
 import { StartScreen } from "@/app/components/StartScreen";
+import type { LiveSample } from "@/lib/live-samples";
 import { fetchPerformanceStatus, type PerformanceStatus } from "@/lib/performance-status";
 
 type View = "start" | "result" | "compare" | "history";
+
+function AppShell({
+  view,
+  onNavigate,
+  children,
+}: {
+  view: View;
+  onNavigate: (view: View) => void;
+  children: ReactNode;
+}) {
+  const navigation = [
+    { view: "start" as const, label: "시작", detail: "Agent 연결", icon: "⌂" },
+    { view: "result" as const, label: "분석", detail: "Performance Analysis", icon: "⌁" },
+    { view: "compare" as const, label: "비교", detail: "Before / After", icon: "↗" },
+    { view: "history" as const, label: "히스토리", detail: "Analysis History", icon: "◷" },
+  ];
+
+  return (
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="brand">
+          <span className="brand-mark">⌁</span>
+          <div>
+            <strong>TracePC</strong>
+            <span>PC Performance Analyzer</span>
+          </div>
+        </div>
+        <nav className="sidebar-nav" aria-label="주요 화면">
+          {navigation.map((item) => (
+            <button
+              key={item.view}
+              className={`sidebar-nav-item ${view === item.view ? "is-active" : ""}`}
+              onClick={() => onNavigate(item.view)}
+            >
+              <span className="sidebar-nav-icon">{item.icon}</span>
+              <span>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <span className="live-dot" />
+          <div>
+            <strong>TracePC 준비됨</strong>
+            <small>Windows Agent로 측정</small>
+          </div>
+        </div>
+      </aside>
+      <div className="app-content">{children}</div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [view, setView] = useState<View>("start");
@@ -17,6 +72,10 @@ export default function Home() {
   const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
   const [previousStatus, setPreviousStatus] = useState<PerformanceStatus | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 화면②(AnalysisScreen)가 실제로 수집한 실시간 sample들. 화면③이
+  // "조치 전" 그래프에 fake 데이터 없이 이 실측 시계열을 그대로
+  // 재사용할 수 있도록 여기서 보관해둔다.
+  const [analysisSamples, setAnalysisSamples] = useState<LiveSample[]>([]);
 
   async function issueCode() {
     const res = await fetch("/api/code", { method: "POST" });
@@ -73,8 +132,10 @@ export default function Home() {
     }
   }
 
+  let screen: React.ReactNode;
+
   if (view === "start") {
-    return (
+    screen = (
       <StartScreen
         code={code}
         inputCode={inputCode}
@@ -86,31 +147,31 @@ export default function Home() {
         onViewHistory={() => setView("history")}
       />
     );
-  }
-
-  if (view === "history") {
-    return <HistoryScreen code={inputCode} onBackToStart={() => setView("start")} />;
-  }
-
-  if (view === "compare") {
-    return (
+  } else if (view === "history") {
+    screen = <HistoryScreen code={inputCode} onBackToStart={() => setView("start")} />;
+  } else if (view === "compare") {
+    screen = (
       <CompareScreen
         code={inputCode}
         previousStatus={previousStatus}
+        previousSamples={analysisSamples}
         onStatusUpdate={handleCompareStatusUpdate}
         onBackToAnalysis={() => setView("result")}
       />
     );
+  } else {
+    screen = (
+      <AnalysisScreen
+        code={inputCode}
+        status={performanceStatus}
+        isLoading={isAnalyzing}
+        onStatusUpdate={setPerformanceStatus}
+        onSamplesChange={setAnalysisSamples}
+        onRequestReanalysis={requestReanalysis}
+        onBackToStart={() => setView("start")}
+      />
+    );
   }
 
-  return (
-    <AnalysisScreen
-      code={inputCode}
-      status={performanceStatus}
-      isLoading={isAnalyzing}
-      onStatusUpdate={setPerformanceStatus}
-      onRequestReanalysis={requestReanalysis}
-      onBackToStart={() => setView("start")}
-    />
-  );
+  return <AppShell view={view} onNavigate={setView}>{screen}</AppShell>;
 }

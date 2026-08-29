@@ -56,9 +56,29 @@ export function UsageGraph({
           y2={thresholdY}
           className="usage-graph-threshold"
         />
-        {SERIES_ORDER.map((key) => (
-          <path key={key} d={buildPath(key)} className="usage-graph-line" style={{ strokeDasharray: SERIES_DASH[key] }} />
+        {[0.25, 0.5, 0.75].map((position) => (
+          <line
+            key={position}
+            x1={PADDING}
+            y1={PADDING + (HEIGHT - PADDING * 2) * position}
+            x2={WIDTH - PADDING}
+            y2={PADDING + (HEIGHT - PADDING * 2) * position}
+            className="usage-graph-gridline"
+          />
         ))}
+        {series.length === 1 &&
+          SERIES_ORDER.map((key) => (
+            // sample이 1개뿐이면 <path d="M x y">는 line-to 명령이 없어
+            // 브라우저에 아무것도 그려지지 않는다(SVG 표준 동작) — 그래서
+            // 실제 점 하나라도 눈에 보이도록 원으로 그린다. fake 점을
+            // 추가하는 게 아니라, 있는 유일한 실제 값을 표시 방식만
+            // 바꾸는 것이다.
+            <circle key={key} cx={toX(0)} cy={toY(series[0][key])} r={3} className={`usage-graph-point usage-graph-point-${key}`} />
+          ))}
+        {series.length >= 2 &&
+          SERIES_ORDER.map((key) => (
+            <path key={key} d={buildPath(key)} className={`usage-graph-line usage-graph-line-${key}`} style={{ strokeDasharray: SERIES_DASH[key] }} />
+          ))}
       </svg>
       <div className="usage-graph-legend">
         {SERIES_ORDER.map((key) => (
