@@ -37,7 +37,23 @@ export default function Home() {
       <p>느려진 순간을 추적해 PC 성능 저하의 원인을 찾습니다.</p>
 
       <section>
-        <h2>연결 코드 발급</h2>
+        <h2>1. Windows Agent 다운로드</h2>
+        <a href="/downloads/TracePCAgent.exe" download>
+          TracePCAgent.exe 다운로드
+        </a>
+      </section>
+
+      <section>
+        <h2>2. Agent 실행</h2>
+        <p>다운로드한 TracePCAgent.exe를 더블클릭해 실행하세요.</p>
+        <p>
+          Windows가 &quot;알 수 없는 앱&quot; 경고를 표시하면 &quot;추가
+          정보&quot; → &quot;실행&quot;을 눌러 계속 진행하세요.
+        </p>
+      </section>
+
+      <section>
+        <h2>3. 연결 코드 발급</h2>
         <button onClick={issueCode}>연결 코드 발급</button>
         {code && (
           <p>
@@ -47,7 +63,12 @@ export default function Home() {
       </section>
 
       <section>
-        <h2>CPU 상태 조회</h2>
+        <h2>4. Agent에 코드 입력</h2>
+        <p>Agent 콘솔 창에 위에서 발급받은 6자리 코드를 입력하세요.</p>
+      </section>
+
+      <section>
+        <h2>5. CPU 상태 조회</h2>
         <div>
           <label>
             연결 코드{" "}
