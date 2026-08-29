@@ -31,9 +31,20 @@ Windows I/O 병목 수동 검증: 미재현 / 자동 검증 완료".** 자세한
 
 CPU/RAM/Disk 세 기능 모두 완료 상태(Disk는 자동 검증 완료 + 수동
 검증 미재현으로 종결)이며, 회귀 버그가 없는 한 추가로 수정하지
-않는다. **다음 세션 시작 작업은 "CPU/RAM/Disk 종합 진단" 설계안에
-대한 사용자 승인을 받는 것이다** — 승인 전까지 SPEC 문서화나 구현에
-들어가지 않는다.
+않는다.
+
+이어서 같은 세션에서 "CPU/RAM/Disk 종합 진단"(세 결과 중 "가장
+의심되는 병목 후보"를 한 화면에 요약) 설계안을 승인받아
+`specs/comprehensive-diagnosis.md` → TDD → 구현 → 전체 회귀 테스트 →
+typecheck/build → deploy → production API E2E까지 완료했고
+(commit `0727f29`), 사용자가 실제 production 웹에서 직접 확인해
+정상 표시됨을 확인했다. **완료 상태.** 회귀 버그가 없는 한
+`lib/comprehensive-diagnosis.ts`를 임의로 수정하지 않는다.
+
+CPU/RAM/Disk 개별 분석 + 종합 진단까지, 이번 2주 MVP의 핵심 vertical
+slice가 모두 완료됐다. **다음 세션은 무엇을 할지(최종 UI 디자인,
+새 기능 등) 아직 정해지지 않았다** — 사용자에게 우선순위를 먼저
+확인하는 것부터 시작한다. 자세한 기록은 `SESSION.md` 참고.
 
 ## 오늘의 성공
 

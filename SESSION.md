@@ -261,6 +261,38 @@ Windows 자체 typeperf 카운터)가 두 단계 모두에서 일관되게 낮�
 검증 완료 상태는 그대로 유지한다. **최종 상태: "Disk 실제 Windows
 I/O 병목 수동 검증: 미재현 / 자동 검증 완료".**
 
+### 10. CPU/RAM/Disk 종합 진단 vertical slice + 실제 production 수동 확인 완료
+
+Disk 미재현 결론을 낸 직후, 같은 세션에서 이어서 "CPU/RAM/Disk 종합
+진단" 슬라이스를 브레인스토밍(설계 승인) → `specs/comprehensive-diagnosis.md`
+→ TDD → 구현 → 전체 회귀 테스트 → typecheck/build → deploy →
+production API E2E까지 중간 승인 없이 진행했고, 그 직후 사용자가
+실제 production 웹에서 직접 확인해 정상 동작을 확인했다.
+
+- 새 파일 `lib/comprehensive-diagnosis.ts`(순수 함수) +
+  `lib/comprehensive-diagnosis.test.ts`(10개 테스트)만 추가했고,
+  `agent/*.py`와 기존 CPU/RAM/Disk 개별 판정 로직·상세 섹션은 전혀
+  건드리지 않았다.
+- 순위 규칙: 2개 이상 동시 후보일 때 유일하게 세 리소스가 공유하는
+  실측 공통 단위인 `durationSeconds`로만 순위를 매기고(퍼센트끼리는
+  절대 비교하지 않음), 최댓값이 완전히 동률이면 임의의 승자를 만들지
+  않고 그 시점의 후보 전체를 "동시에 감지된 병목 후보"로 표시한다.
+- `npm test` 38/38, `npm run typecheck`/`npm run build` 통과,
+  `python -m pytest`(agent) 123/123로 Agent 무회귀 재확인.
+- production 배포 JS 번들에서 새 코드 시그니처(`single-primary`,
+  `tied-primary`, "가장 의심되는", "동시에 감지된") 존재를 직접
+  확인했고, RAM/Disk가 동률(6.0초)인 합성 payload로 production
+  `/api/data` POST→GET 왕복도 확인했다.
+- commit `dec46b6`(Disk 미재현 기록), `0727f29`(종합 진단 기능).
+- **이어서 사용자가 실제 production 웹에서 연결 코드로 직접
+  `[성능 분석]`을 눌러 화면을 확인**했고, 종합 진단 요약 카드와
+  기존 CPU/RAM/Disk 상세 섹션이 함께 정상적으로 표시됨을 확인했다
+  ("다 보여"). 이로써 자동 검증만으로 남아 있던 마지막 항목(실제
+  브라우저 렌더링 확인)까지 완료됐다.
+
+이로써 CPU/RAM/Disk 개별 분석 + 종합 진단까지, 이번 2주 MVP 범위의
+핵심 vertical slice가 모두 완료 상태가 됐다.
+
 ## 현재 상태 (production 기준)
 
 - **CPU 성능 분석**: `PLAN.md` 기능 1~3이 production에 배포돼 있고,
@@ -286,14 +318,16 @@ I/O 병목 수동 검증: 미재현 / 자동 검증 완료".**
   `agent/disk_agent.py`, `agent/performance_upload.py`,
   `agent/main.py`의 Disk 관련 부분, `lib/performance-status.ts`,
   `app/page.tsx`의 Disk 관련 부분을 임의로 추가 수정하지 않는다.
+- **CPU/RAM/Disk 종합 진단**: commit `0727f29`로 구현·production
+  배포까지 완료됐고, 위 10번 항목에서 실제 production 웹 화면으로
+  사용자가 직접 확인까지 마쳤다. **완료 상태.** 회귀 버그가 확인되지
+  않는 한 `lib/comprehensive-diagnosis.ts`와 `app/page.tsx`의 종합
+  진단 관련 부분을 임의로 수정하지 않는다.
 
 ## 다음 세션 Next Step
 
-**다음 세션 시작 작업: "CPU/RAM/Disk 종합 진단" 설계.**
-
-CPU/RAM/Disk 개별 분석은 모두 완료 상태다(Disk는 자동 검증 완료 +
-수동 검증 미재현으로 종결). 다음 vertical slice는 세 지표를 하나의
-화면에서 종합해 "가장 의심되는 병목 후보"를 보여주는 기능이다.
-설계안 제시까지만 진행했고 아직 SPEC 문서화나 구현은 시작하지
-않았다 — 다음 세션은 이 설계안에 대한 사용자 승인을 받는 것부터
-시작한다. 승인 전까지는 코드/문서 구현에 들어가지 않는다.
+CPU/RAM/Disk 개별 분석 + 종합 진단까지 전부 완료 상태이며, 자동
+검증과 실제 production 수동 확인을 모두 마쳤다. 회귀 버그가 없는 한
+기존 구현을 임의로 수정하지 않는다. 다음으로 무엇을 할지(최종 UI
+디자인/스타일링, 새 기능, 배포 마무리 등)는 아직 정해지지 않았다 —
+다음 세션은 사용자에게 우선순위를 먼저 확인하는 것부터 시작한다.
