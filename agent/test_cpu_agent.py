@@ -9,8 +9,13 @@ import pytest
 
 from cpu_agent import (
     CpuMeasurementError,
+    collect_process_samples,
+    evaluate_overload_status,
+    format_overload_status_line,
     is_valid_connection_code,
     measure_cpu_percent,
+    pick_top_process,
+    trim_history,
     upload_measurement,
 )
 
@@ -62,6 +67,9 @@ def test_upload_measurement_sends_code_and_cpu_value():
         measured_at="2026-08-27T00:00:00Z",
         base_url="https://pcproject-tau.vercel.app",
         http_post=fake_post,
+        overload_status="insufficient-data",
+        overload_evidence=None,
+        top_process=None,
     )
 
     assert len(calls) == 1
@@ -73,6 +81,40 @@ def test_upload_measurement_sends_code_and_cpu_value():
     assert value["measuredAt"] == "2026-08-27T00:00:00Z"
 
 
+def test_upload_measurement_includes_overload_analysis_in_payload():
+    calls = []
+
+    def fake_post(url, json_body):
+        calls.append((url, json_body))
+        return FakeResponse(status_code=200)
+
+    upload_measurement(
+        code="AB12CD",
+        cpu_percent=98.2,
+        measured_at="2026-08-27T07:00:06Z",
+        base_url="https://pcproject-tau.vercel.app",
+        http_post=fake_post,
+        overload_status="overload-candidate",
+        overload_evidence={
+            "startedAt": "2026-08-27T07:00:00Z",
+            "endedAt": "2026-08-27T07:00:06Z",
+            "durationSeconds": 6.0,
+            "maxCpuPercent": 98.2,
+        },
+        top_process={"pid": 1234, "name": "chrome.exe", "cpuPercent": 55.3},
+    )
+
+    value = json.loads(calls[0][1]["value"])
+    assert value["overloadStatus"] == "overload-candidate"
+    assert value["overloadEvidence"] == {
+        "startedAt": "2026-08-27T07:00:00Z",
+        "endedAt": "2026-08-27T07:00:06Z",
+        "durationSeconds": 6.0,
+        "maxCpuPercent": 98.2,
+    }
+    assert value["topProcess"] == {"pid": 1234, "name": "chrome.exe", "cpuPercent": 55.3}
+
+
 def test_upload_measurement_reports_success_on_ok_response():
     result = upload_measurement(
         code="AB12CD",
@@ -80,6 +122,9 @@ def test_upload_measurement_reports_success_on_ok_response():
         measured_at="2026-08-27T00:00:00Z",
         base_url="https://pcproject-tau.vercel.app",
         http_post=lambda url, json_body: FakeResponse(status_code=200),
+        overload_status="normal",
+        overload_evidence=None,
+        top_process=None,
     )
 
     assert result["success"] is True
@@ -92,6 +137,9 @@ def test_upload_measurement_reports_failure_on_error_response():
         measured_at="2026-08-27T00:00:00Z",
         base_url="https://pcproject-tau.vercel.app",
         http_post=lambda url, json_body: FakeResponse(status_code=500),
+        overload_status="normal",
+        overload_evidence=None,
+        top_process=None,
     )
 
     assert result["success"] is False
@@ -108,7 +156,301 @@ def test_upload_measurement_reports_failure_on_connection_error():
         measured_at="2026-08-27T00:00:00Z",
         base_url="https://pcproject-tau.vercel.app",
         http_post=raising_post,
+        overload_status="normal",
+        overload_evidence=None,
+        top_process=None,
     )
 
     assert result["success"] is False
     assert "error" in result
+
+
+# --- evaluate_overload_status (specs/cpu-overload.md) ---
+
+
+def test_evaluate_overload_status_insufficient_data_when_history_empty():
+    result = evaluate_overload_status([])
+    assert result == {"status": "insufficient-data", "evidence": None}
+
+
+def test_evaluate_overload_status_insufficient_data_when_single_entry():
+    history = [{"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"}]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "insufficient-data", "evidence": None}
+
+
+def test_evaluate_overload_status_normal_when_all_low():
+    history = [
+        {"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 20.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 15.0, "measuredAt": "2026-08-27T07:00:04Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "normal", "evidence": None}
+
+
+def test_evaluate_overload_status_insufficient_data_when_high_run_not_yet_5_seconds():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 96.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 97.0, "measuredAt": "2026-08-27T07:00:04Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "insufficient-data", "evidence": None}
+
+
+def test_evaluate_overload_status_overload_candidate_when_sustained_6_seconds():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 96.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 97.0, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 98.2, "measuredAt": "2026-08-27T07:00:06Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result["status"] == "overload-candidate"
+    assert result["evidence"] == {
+        "startedAt": "2026-08-27T07:00:00Z",
+        "endedAt": "2026-08-27T07:00:06Z",
+        "durationSeconds": 6.0,
+        "maxCpuPercent": 98.2,
+    }
+
+
+def test_evaluate_overload_status_normal_when_high_run_ends_before_5_seconds():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 96.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 97.0, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:06Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "normal", "evidence": None}
+
+
+def test_evaluate_overload_status_boundary_89_9_percent_is_not_high():
+    history = [
+        {"cpuPercent": 89.9, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 89.9, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 89.9, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 89.9, "measuredAt": "2026-08-27T07:00:06Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "normal", "evidence": None}
+
+
+def test_evaluate_overload_status_boundary_exactly_5_seconds_is_sustained():
+    history = [
+        {"cpuPercent": 90.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 90.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 90.0, "measuredAt": "2026-08-27T07:00:05Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result["status"] == "overload-candidate"
+    assert result["evidence"]["durationSeconds"] == 5.0
+
+
+def test_evaluate_overload_status_boundary_under_5_seconds_is_not_sustained():
+    history = [
+        {"cpuPercent": 90.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 90.0, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:06Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "normal", "evidence": None}
+
+
+def test_evaluate_overload_status_gap_over_4_seconds_breaks_run():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        # 4.1초 공백 -> 구간이 끊긴다
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:06.100Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:08.100Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "insufficient-data", "evidence": None}
+
+
+def test_evaluate_overload_status_gap_of_exactly_4_seconds_does_not_break_run():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:08Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result["status"] == "overload-candidate"
+    assert result["evidence"]["durationSeconds"] == 8.0
+
+
+def test_evaluate_overload_status_ignores_entries_with_invalid_cpu_percent():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": "높음", "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:04Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "insufficient-data", "evidence": None}
+
+
+def test_evaluate_overload_status_ignores_entries_with_unparseable_timestamp():
+    history = [
+        {"cpuPercent": 10.0, "measuredAt": "이건 시각이 아님"},
+        {"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 15.0, "measuredAt": "2026-08-27T07:00:02Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result == {"status": "normal", "evidence": None}
+
+
+def test_evaluate_overload_status_stays_overload_candidate_after_values_drop():
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:02Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:04Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:06Z"},
+        {"cpuPercent": 5.0, "measuredAt": "2026-08-27T07:00:08Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result["status"] == "overload-candidate"
+
+
+# --- trim_history ---
+
+
+def test_trim_history_drops_entries_older_than_window():
+    import datetime
+
+    now = datetime.datetime(2026, 8, 27, 7, 1, 5, tzinfo=datetime.timezone.utc)
+    history = [
+        {"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:00Z"},  # 65초 전 -> 버려짐
+        {"cpuPercent": 20.0, "measuredAt": "2026-08-27T07:00:10Z"},  # 55초 전 -> 유지
+    ]
+    result = trim_history(history, now, window_seconds=60.0)
+    assert result == [{"cpuPercent": 20.0, "measuredAt": "2026-08-27T07:00:10Z"}]
+
+
+def test_trim_history_keeps_entry_exactly_at_window_boundary():
+    import datetime
+
+    now = datetime.datetime(2026, 8, 27, 7, 1, 0, tzinfo=datetime.timezone.utc)
+    history = [{"cpuPercent": 10.0, "measuredAt": "2026-08-27T07:00:00Z"}]
+    result = trim_history(history, now, window_seconds=60.0)
+    assert result == history
+
+
+# --- format_overload_status_line ---
+
+
+def test_format_overload_status_line_insufficient_data():
+    line = format_overload_status_line({"status": "insufficient-data", "evidence": None})
+    assert line == "상태: 데이터 부족"
+
+
+def test_format_overload_status_line_normal():
+    line = format_overload_status_line({"status": "normal", "evidence": None})
+    assert line == "상태: 정상"
+
+
+# --- collect_process_samples / pick_top_process (specs/cpu-process-candidates.md) ---
+
+
+class FakeProcess:
+    def __init__(self, pid, name, cpu_percent, raises=None):
+        self.pid = pid
+        self._name = name
+        self._cpu_percent = cpu_percent
+        self._raises = raises
+
+    def name(self):
+        if self._raises == "name":
+            raise Exception("access denied")
+        return self._name
+
+    def cpu_percent(self, interval=None):
+        if self._raises == "cpu_percent":
+            raise Exception("process no longer exists")
+        return self._cpu_percent
+
+
+def test_collect_process_samples_returns_pid_name_cpu_percent():
+    processes = [FakeProcess(pid=1, name="chrome.exe", cpu_percent=55.3)]
+
+    samples = collect_process_samples(lambda: processes)
+
+    assert samples == [{"pid": 1, "name": "chrome.exe", "cpuPercent": 55.3}]
+
+
+def test_collect_process_samples_skips_process_that_raises_on_name():
+    processes = [
+        FakeProcess(pid=1, name="chrome.exe", cpu_percent=55.3, raises="name"),
+        FakeProcess(pid=2, name="python.exe", cpu_percent=10.0),
+    ]
+
+    samples = collect_process_samples(lambda: processes)
+
+    assert samples == [{"pid": 2, "name": "python.exe", "cpuPercent": 10.0}]
+
+
+def test_collect_process_samples_skips_process_that_raises_on_cpu_percent():
+    processes = [
+        FakeProcess(pid=1, name="chrome.exe", cpu_percent=55.3, raises="cpu_percent"),
+        FakeProcess(pid=2, name="python.exe", cpu_percent=10.0),
+    ]
+
+    samples = collect_process_samples(lambda: processes)
+
+    assert samples == [{"pid": 2, "name": "python.exe", "cpuPercent": 10.0}]
+
+
+def test_collect_process_samples_returns_empty_list_when_no_processes():
+    samples = collect_process_samples(lambda: [])
+    assert samples == []
+
+
+def test_collect_process_samples_returns_empty_list_when_all_processes_fail():
+    processes = [
+        FakeProcess(pid=1, name="a.exe", cpu_percent=1.0, raises="name"),
+        FakeProcess(pid=2, name="b.exe", cpu_percent=1.0, raises="cpu_percent"),
+    ]
+    samples = collect_process_samples(lambda: processes)
+    assert samples == []
+
+
+def test_pick_top_process_returns_none_when_empty():
+    assert pick_top_process([]) is None
+
+
+def test_pick_top_process_returns_the_single_entry():
+    samples = [{"pid": 1, "name": "chrome.exe", "cpuPercent": 55.3}]
+    assert pick_top_process(samples) == samples[0]
+
+
+def test_pick_top_process_returns_highest_cpu_percent():
+    samples = [
+        {"pid": 1, "name": "chrome.exe", "cpuPercent": 55.3},
+        {"pid": 2, "name": "python.exe", "cpuPercent": 98.2},
+        {"pid": 3, "name": "explorer.exe", "cpuPercent": 3.1},
+    ]
+    assert pick_top_process(samples) == {"pid": 2, "name": "python.exe", "cpuPercent": 98.2}
+
+
+def test_pick_top_process_returns_first_on_tie():
+    samples = [
+        {"pid": 1, "name": "a.exe", "cpuPercent": 50.0},
+        {"pid": 2, "name": "b.exe", "cpuPercent": 50.0},
+    ]
+    assert pick_top_process(samples) == {"pid": 1, "name": "a.exe", "cpuPercent": 50.0}
+
+
+def test_format_overload_status_line_overload_candidate():
+    result = {
+        "status": "overload-candidate",
+        "evidence": {
+            "startedAt": "2026-08-27T07:00:00Z",
+            "endedAt": "2026-08-27T07:00:06Z",
+            "durationSeconds": 6.0,
+            "maxCpuPercent": 98.2,
+        },
+    }
+    line = format_overload_status_line(result)
+    assert line == "상태: CPU 과부하 후보 (98.2%, 07:00:00~07:00:06, 6.0초 지속)"

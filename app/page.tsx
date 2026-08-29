@@ -1,14 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { fetchCpuStatus, type CpuStatus } from "@/lib/cpu-status";
+import { fetchCpuStatus, type CpuStatus, type OverloadStatus } from "@/lib/cpu-status";
 
-const STATUS_TEXT: Record<CpuStatus["status"], string> = {
+const STATUS_TEXT: Record<Exclude<CpuStatus["status"], "received">, string> = {
   "invalid-code": "잘못된 연결 코드 형식",
   "no-data": "아직 수신된 데이터 없음",
   "fetch-failed": "조회 실패",
   "invalid-format": "데이터 형식을 확인할 수 없음",
-  received: "데이터 수신됨",
+};
+
+const OVERLOAD_STATUS_TEXT: Record<OverloadStatus, string> = {
+  "insufficient-data": "데이터 부족",
+  normal: "CPU 과부하 근거 없음",
+  "overload-candidate": "CPU 과부하 후보",
 };
 
 export default function Home() {
@@ -68,7 +73,7 @@ export default function Home() {
       </section>
 
       <section>
-        <h2>5. CPU 상태 조회</h2>
+        <h2>5. 성능 분석</h2>
         <div>
           <label>
             연결 코드{" "}
@@ -79,17 +84,36 @@ export default function Home() {
             />
           </label>
         </div>
-        <button onClick={checkCpuStatus}>조회</button>
+        <button onClick={checkCpuStatus}>성능 분석</button>
         {cpuStatus && (
           <div>
-            <p>상태: {STATUS_TEXT[cpuStatus.status]}</p>
-            {cpuStatus.status === "received" && (
+            {cpuStatus.status !== "received" ? (
+              <p>상태: {STATUS_TEXT[cpuStatus.status]}</p>
+            ) : (
               <>
+                <p>상태: {OVERLOAD_STATUS_TEXT[cpuStatus.overloadStatus]}</p>
                 <p>CPU 사용률: {cpuStatus.cpuPercent.toFixed(1)}%</p>
                 <p>
                   마지막 측정:{" "}
                   {new Date(cpuStatus.measuredAt).toLocaleString()}
                 </p>
+                {cpuStatus.overloadStatus === "overload-candidate" &&
+                  cpuStatus.overloadEvidence && (
+                    <p>
+                      판정 근거: 최고 {cpuStatus.overloadEvidence.maxCpuPercent.toFixed(1)}%,{" "}
+                      {new Date(cpuStatus.overloadEvidence.startedAt).toLocaleTimeString()} ~{" "}
+                      {new Date(cpuStatus.overloadEvidence.endedAt).toLocaleTimeString()} (
+                      {cpuStatus.overloadEvidence.durationSeconds.toFixed(1)}초 지속)
+                    </p>
+                  )}
+                {cpuStatus.overloadStatus === "overload-candidate" &&
+                  cpuStatus.topProcess && (
+                    <p>
+                      관련 프로세스 후보: {cpuStatus.topProcess.name} (PID{" "}
+                      {cpuStatus.topProcess.pid}, CPU{" "}
+                      {cpuStatus.topProcess.cpuPercent.toFixed(1)}%)
+                    </p>
+                  )}
               </>
             )}
           </div>

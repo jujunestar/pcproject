@@ -27,7 +27,69 @@ describe("fetchCpuStatus", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/data?code=ABC123");
   });
 
-  it("CPU 데이터가 있으면 cpuPercent와 measuredAt을 정상적으로 해석한다", async () => {
+  it("CPU 데이터가 있으면 cpuPercent, measuredAt, 과부하 분석 결과를 정상적으로 해석한다", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        value: JSON.stringify({
+          cpuPercent: 42.3,
+          measuredAt: "2026-08-27T05:32:10.000Z",
+          overloadStatus: "normal",
+          overloadEvidence: null,
+          topProcess: null,
+        }),
+      }),
+    });
+
+    const result = await fetchCpuStatus("ABC123");
+
+    expect(result).toEqual({
+      status: "received",
+      cpuPercent: 42.3,
+      measuredAt: "2026-08-27T05:32:10.000Z",
+      overloadStatus: "normal",
+      overloadEvidence: null,
+      topProcess: null,
+    });
+  });
+
+  it("CPU 과부하 후보 상태이면 overloadEvidence와 topProcess를 함께 해석한다", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        value: JSON.stringify({
+          cpuPercent: 98.2,
+          measuredAt: "2026-08-27T07:00:06.000Z",
+          overloadStatus: "overload-candidate",
+          overloadEvidence: {
+            startedAt: "2026-08-27T07:00:00.000Z",
+            endedAt: "2026-08-27T07:00:06.000Z",
+            durationSeconds: 6.0,
+            maxCpuPercent: 98.2,
+          },
+          topProcess: { pid: 1234, name: "chrome.exe", cpuPercent: 55.3 },
+        }),
+      }),
+    });
+
+    const result = await fetchCpuStatus("ABC123");
+
+    expect(result).toEqual({
+      status: "received",
+      cpuPercent: 98.2,
+      measuredAt: "2026-08-27T07:00:06.000Z",
+      overloadStatus: "overload-candidate",
+      overloadEvidence: {
+        startedAt: "2026-08-27T07:00:00.000Z",
+        endedAt: "2026-08-27T07:00:06.000Z",
+        durationSeconds: 6.0,
+        maxCpuPercent: 98.2,
+      },
+      topProcess: { pid: 1234, name: "chrome.exe", cpuPercent: 55.3 },
+    });
+  });
+
+  it("overloadStatus 필드가 없으면 임의의 값을 만들지 않고 형식 오류 상태가 된다", async () => {
     mockFetchOnce({
       ok: true,
       json: async () => ({
@@ -40,11 +102,69 @@ describe("fetchCpuStatus", () => {
 
     const result = await fetchCpuStatus("ABC123");
 
-    expect(result).toEqual({
-      status: "received",
-      cpuPercent: 42.3,
-      measuredAt: "2026-08-27T05:32:10.000Z",
+    expect(result).toEqual({ status: "invalid-format" });
+  });
+
+  it("overloadStatus 값이 정의된 3가지 상태가 아니면 형식 오류 상태가 된다", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        value: JSON.stringify({
+          cpuPercent: 42.3,
+          measuredAt: "2026-08-27T05:32:10.000Z",
+          overloadStatus: "매우 나쁨",
+          overloadEvidence: null,
+          topProcess: null,
+        }),
+      }),
     });
+
+    const result = await fetchCpuStatus("ABC123");
+
+    expect(result).toEqual({ status: "invalid-format" });
+  });
+
+  it("overloadStatus가 overload-candidate인데 overloadEvidence 필드가 잘못되면 형식 오류 상태가 된다", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        value: JSON.stringify({
+          cpuPercent: 98.2,
+          measuredAt: "2026-08-27T07:00:06.000Z",
+          overloadStatus: "overload-candidate",
+          overloadEvidence: { startedAt: "2026-08-27T07:00:00.000Z" },
+          topProcess: null,
+        }),
+      }),
+    });
+
+    const result = await fetchCpuStatus("ABC123");
+
+    expect(result).toEqual({ status: "invalid-format" });
+  });
+
+  it("topProcess 필드가 잘못된 형식이면 형식 오류 상태가 된다", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        value: JSON.stringify({
+          cpuPercent: 98.2,
+          measuredAt: "2026-08-27T07:00:06.000Z",
+          overloadStatus: "overload-candidate",
+          overloadEvidence: {
+            startedAt: "2026-08-27T07:00:00.000Z",
+            endedAt: "2026-08-27T07:00:06.000Z",
+            durationSeconds: 6.0,
+            maxCpuPercent: 98.2,
+          },
+          topProcess: { pid: "not-a-number", name: "chrome.exe" },
+        }),
+      }),
+    });
+
+    const result = await fetchCpuStatus("ABC123");
+
+    expect(result).toEqual({ status: "invalid-format" });
   });
 
   it("value가 null이면 아직 수신된 데이터 없음 상태가 된다", async () => {
