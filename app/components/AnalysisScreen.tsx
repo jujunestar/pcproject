@@ -229,6 +229,7 @@ export function AnalysisScreen({
 
         return (
           <>
+            <div className="analysis-hero-layout">
             <section className="panel panel-diagnosis">
               <div className="page-heading">
                 <div>
@@ -259,6 +260,7 @@ export function AnalysisScreen({
                 <span>{status.disk === null ? "데이터 부족" : DISK_IO_STATUS_TEXT[status.disk.ioStatus]}</span>
               </article>
             </section>
+            </div>
 
             <div className="analysis-insights-grid">
             <section className="panel panel-graph">
@@ -287,14 +289,11 @@ export function AnalysisScreen({
                   ))}
                 </ul>
               )}
-            </section>
-            </div>
-
-            <section className="panel panel-cta">
               <button className="button button-primary" onClick={onRequestReanalysis}>
                 조치 후 다시 분석
               </button>
             </section>
+            </div>
 
             <div className="detail-grid">
             <section className="panel panel-detail">

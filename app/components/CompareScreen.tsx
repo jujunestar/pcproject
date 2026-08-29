@@ -227,10 +227,17 @@ export function CompareScreen({
                 <h2>가장 큰 변화</h2>
                 {comparison.headlineChange ? (
                   <>
-                    <p className="diagnosis-headline">
-                      {comparison.headlineChange.label} {comparison.headlineChange.beforeValueLabel} →{" "}
-                      {comparison.headlineChange.afterValueLabel}
-                    </p>
+                    <div className="comparison-metric-hero">
+                      <div>
+                        <span>Before · {comparison.headlineChange.label}</span>
+                        <strong>{comparison.headlineChange.beforeValueLabel}</strong>
+                      </div>
+                      <b className="comparison-metric-arrow">→</b>
+                      <div>
+                        <span>After · {comparison.headlineChange.label}</span>
+                        <strong>{comparison.headlineChange.afterValueLabel}</strong>
+                      </div>
+                    </div>
                     <p className="muted">{CANDIDATE_CHANGE_TEXT[comparison.headlineChange.candidateChange]}</p>
                   </>
                 ) : (
