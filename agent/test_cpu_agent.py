@@ -259,27 +259,66 @@ def test_evaluate_overload_status_boundary_under_5_seconds_is_not_sustained():
     assert result == {"status": "normal", "evidence": None}
 
 
-def test_evaluate_overload_status_gap_over_4_seconds_breaks_run():
+def test_evaluate_overload_status_gap_over_max_seconds_breaks_run():
+    from cpu_agent import MAX_SAMPLE_GAP_SECONDS
+
+    over_gap = MAX_SAMPLE_GAP_SECONDS + 0.1
     history = [
         {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
         {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:02Z"},
-        # 4.1초 공백 -> 구간이 끊긴다
-        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:06.100Z"},
-        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:08.100Z"},
+        # MAX_SAMPLE_GAP_SECONDS를 넘는 공백 -> 구간이 끊긴다
+        {
+            "cpuPercent": 95.0,
+            "measuredAt": f"2026-08-27T07:00:{2 + over_gap:06.3f}Z",
+        },
     ]
     result = evaluate_overload_status(history)
     assert result == {"status": "insufficient-data", "evidence": None}
 
 
-def test_evaluate_overload_status_gap_of_exactly_4_seconds_does_not_break_run():
+def test_evaluate_overload_status_gap_of_exactly_max_seconds_does_not_break_run():
+    from cpu_agent import MAX_SAMPLE_GAP_SECONDS
+
     history = [
         {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00Z"},
-        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:04Z"},
-        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:08Z"},
+        {
+            "cpuPercent": 95.0,
+            "measuredAt": f"2026-08-27T07:00:{MAX_SAMPLE_GAP_SECONDS:06.3f}Z",
+        },
+        {
+            "cpuPercent": 95.0,
+            "measuredAt": f"2026-08-27T07:00:{2 * MAX_SAMPLE_GAP_SECONDS:06.3f}Z",
+        },
     ]
     result = evaluate_overload_status(history)
     assert result["status"] == "overload-candidate"
-    assert result["evidence"]["durationSeconds"] == 8.0
+    # 두 번째 샘플에서 이미 (0 -> MAX_SAMPLE_GAP_SECONDS) 구간이 5초 지속을
+    # 만족하므로, 첫 번째로 확정되는 구간은 이 두 샘플까지다.
+    assert result["evidence"]["durationSeconds"] == MAX_SAMPLE_GAP_SECONDS
+
+
+def test_evaluate_overload_status_overload_candidate_with_realistic_agent_loop_gaps():
+    """실제 프로덕션에서 재현된 회귀: 90% 이상 CPU가 실제로 5초 넘게 지속됐는데도
+    overload-candidate로 판정되지 않던 버그.
+
+    아래 간격(2.698s / 4.553s / 3.467s)은 이상적으로 2초씩 균등한 값이 아니라,
+    실제 agent/main.py를 부하 없이 정상 실행한 상태에서 각 콘솔 출력 줄의 도착
+    시각을 외부에서 타임스탬프로 기록해 얻은 실측값이다. 프로세스 후보 수집을
+    위한 프라이밍(매 주기 psutil로 프로세스 전수 조회)과 production 업로드
+    네트워크 왕복 시간 때문에, 실제 측정 주기는 MEASURE_INTERVAL_SECONDS(2초)
+    보다 상당히 길고 들쭉날쭉하다. 이 테스트는 그 실측 간격 패턴을 그대로
+    사용했을 때도 4개 연속 90%+ 샘플이 하나의 지속 구간으로 인정되어야
+    함을 검증한다 (버그 당시에는 4.553초 공백이 MAX_SAMPLE_GAP_SECONDS를
+    넘어 구간이 끊기면서 insufficient-data로 잘못 판정됐다).
+    """
+    history = [
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:00.000Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:02.698Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:07.251Z"},
+        {"cpuPercent": 95.0, "measuredAt": "2026-08-27T07:00:10.718Z"},
+    ]
+    result = evaluate_overload_status(history)
+    assert result["status"] == "overload-candidate"
 
 
 def test_evaluate_overload_status_ignores_entries_with_invalid_cpu_percent():

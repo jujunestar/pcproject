@@ -36,7 +36,7 @@ Agent가 실행 중 직접 측정한 CPU 사용률 이력(메모리 상의 최�
 |---|---|---|
 | `CPU_HIGH_THRESHOLD_PERCENT` | `90.0` | `cpuPercent >= 90.0`이면 "높음". `89.9...`는 "높음 아님". |
 | `MIN_SUSTAINED_SECONDS` | `5.0` | 연속 구간의 (끝 시각 − 시작 시각) `>= 5.0`초면 "지속됨". `4.999...`초는 미달. |
-| `MAX_SAMPLE_GAP_SECONDS` | `4.0` | 현재 `MEASURE_INTERVAL_SECONDS(2.0초)`의 2배. 연속된 두 측정 시각 차이가 `<= 4.0`초면 "같은 구간(연속)"으로 본다. `> 4.0`초면 "공백"으로 보고 그 지점에서 구간을 끊는다 (한 번의 측정 실패로 인한 건너뜀까지는 흡수하되, 그 이상은 흡수하지 않는다). |
+| `MAX_SAMPLE_GAP_SECONDS` | `10.0` | 연속된 두 측정 시각 차이가 `<= 10.0`초면 "같은 구간(연속)"으로 본다. `> 10.0`초면 "공백"으로 보고 그 지점에서 구간을 끊는다 (한 주기 분량의 지연은 흡수하되, 그 이상은 흡수하지 않는다). **버그 수정 이력**: 처음에는 `MEASURE_INTERVAL_SECONDS(2.0초)`의 2배인 `4.0`으로 뒀으나, 실제 `agent/main.py` 루프는 `psutil.cpu_percent(interval=2)`의 2.0초 블로킹 외에도 프로세스 후보 수집을 위한 매 주기 프로세스 프라이밍(실측 약 0.4~0.6초)과 production 업로드 네트워크 왕복(실측 약 0.6~0.9초)이 더해져, 부하 없는 상태에서도 측정 간격이 2.7~4.6초까지 벌어짐이 실측으로 확인됐다. 그 결과 실제로 CPU가 90% 이상으로 5초 넘게 지속돼도 정상적인 주기 간격만으로 구간이 끊겨 `overload-candidate`가 되지 않는 버그가 있었다. 실제 한 주기 길이(약 4~5초)의 2배 수준인 `10.0`으로 수정했다 (`agent/test_cpu_agent.py`의 `test_evaluate_overload_status_overload_candidate_with_realistic_agent_loop_gaps` 참고). |
 | `HISTORY_WINDOW_SECONDS` | `60.0` | Agent가 메모리에 유지하는 최근 이력의 최대 폭. 판정 직전 `now - 60초`보다 오래된 항목은 버린다. 판정 로직 자체의 상수는 아니고 `main.py`의 이력 보관 정책이다. |
 
 ## 판정 로직

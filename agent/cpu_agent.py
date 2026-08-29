@@ -6,7 +6,16 @@ CONNECTION_CODE_PATTERN = re.compile(r"^[A-Za-z0-9]{6}$")
 
 CPU_HIGH_THRESHOLD_PERCENT = 90.0
 MIN_SUSTAINED_SECONDS = 5.0
-MAX_SAMPLE_GAP_SECONDS = 4.0
+# 실제 main.py 루프의 한 주기는 psutil.cpu_percent(interval=2)의 2.0초 블로킹
+# 외에도 프로세스 후보 수집을 위한 매 주기 전체 프로세스 프라이밍(실측 약
+# 0.4~0.6초)과 production 업로드 네트워크 왕복(실측 약 0.6~0.9초)이 더해져,
+# 부하가 없는 상태에서도 측정 간격이 2.7~4.6초까지 벌어진다(실측 근거:
+# test_evaluate_overload_status_overload_candidate_with_realistic_agent_loop_gaps).
+# 예전 값 4.0(= MEASURE_INTERVAL_SECONDS의 2배)은 이 실측 간격보다도 좁아서,
+# 실제로 90% 이상이 계속 유지되는 상황에서도 정상 주기 간격만으로 구간이
+# 끊겨 버렸다. "한 번의 측정 실패로 인한 건너뜀까지는 흡수한다"는 원래
+# 취지를 유지하면서, 실제 한 주기 길이(약 4~5초)의 2배 수준으로 넉넉하게 잡는다.
+MAX_SAMPLE_GAP_SECONDS = 10.0
 HISTORY_WINDOW_SECONDS = 60.0
 
 STATUS_INSUFFICIENT_DATA = "insufficient-data"
