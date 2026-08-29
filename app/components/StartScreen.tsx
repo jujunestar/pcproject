@@ -47,19 +47,20 @@ export function StartScreen({
   return (
     <main className="screen screen-start">
       <section className="panel panel-intro">
-        <h1>TracePC</h1>
+        <p className="eyebrow">WINDOWS PERFORMANCE MONITORING</p>
+        <h1>PC 성능을<br />명확하게 확인하세요.</h1>
         <p>왜 PC가 느린지 측정 근거를 바탕으로 병목 후보를 찾습니다.</p>
         <p className="muted">CPU / RAM / Disk 세 가지를 측정해 분석합니다.</p>
       </section>
 
-      <section className="panel">
+      <section className="panel start-step">
         <h2>1. Windows Agent 다운로드</h2>
         <a href="/downloads/TracePCAgent.exe" download className="button button-secondary">
           TracePCAgent.exe 다운로드
         </a>
       </section>
 
-      <section className="panel">
+      <section className="panel start-step">
         <h2>2. 연결 코드 발급</h2>
         <button className="button" onClick={onIssueCode}>
           연결 코드 발급
@@ -71,12 +72,12 @@ export function StartScreen({
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel start-step">
         <h2>3. Agent에 코드 입력</h2>
         <p className="muted">Agent 콘솔 창에 위에서 발급받은 6자리 코드를 입력하세요.</p>
       </section>
 
-      <section className="panel">
+      <section className="panel start-step start-step-connect">
         <h2>4. 데이터 수신 / 연결 상태</h2>
         <label className="field">
           연결 코드
@@ -88,7 +89,7 @@ export function StartScreen({
         <p className={`status-line status-line-${connectionState}`}>{CONNECTION_STATE_TEXT[connectionState]}</p>
       </section>
 
-      <section className="panel panel-cta">
+      <section className="panel panel-cta start-final-cta">
         <h2>5. 성능 분석 시작</h2>
         <button className="button button-primary" onClick={onStartAnalysis} disabled={inputCode === ""}>
           성능 분석 시작
