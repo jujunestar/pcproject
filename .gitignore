@@ -250,3 +250,6 @@ __marimo__/
 
 .vercel
 .env*
+
+# Claude Code brainstorming visual companion mockups
+/.superpowers/
