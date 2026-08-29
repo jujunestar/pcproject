@@ -187,6 +187,31 @@ payload로 검증했을 뿐, 실제 RAM/Disk 부하에서 Agent 콘솔과 웹 �
 `bottleneck-candidate` 전환·판정 근거·관련 프로세스 후보가 실제로
 표시되는지는 아직 실측 확인되지 않았다.
 
+### 8. RAM 실제 Windows 수동 검증 완료 (사용자 직접 실제 Windows 테스트)
+
+이어서, 사용자가 실제 Windows PC에서 production
+`TracePCAgent.exe`를 사용해 안전하게 설계된 점진적 메모리 할당
+스크립트로 RAM 부하를 직접 발생시켜 수동으로 검증했고 **모두
+성공**했다. 위험한 RAM 고갈 없이 안전 여유(여유 메모리 하한선)를
+남긴 상태로 테스트했고, 테스트 종료 후 메모리도 정상 반환됐다.
+
+- production 웹 `[성능 분석]` 화면에서 확인된 값:
+  - RAM 사용률: 93.9%
+  - 사용 중 메모리: 14.8GB
+  - 사용 가능한 메모리: 1.0GB
+  - 상태: `RAM 병목 후보`
+  - 판정 근거: 최고 94.0%, 11:59:44 ~ 11:59:50, 6.0초 지속
+    (`MIN_SUSTAINED_SECONDS=5.0` 기준을 실측으로 충족)
+  - RAM 사용량이 높은 프로세스 후보: `powershell.exe`
+    (PID 5336, 7007.3MB) — 실제 부하를 발생시킨 프로세스가 그대로
+    정상 탐지됨.
+- 같은 상황에서 CPU/Disk 섹션도 정상 표시되어, RAM 검증 과정에서
+  기존 CPU 회귀나 Disk 표시 깨짐이 없음을 함께 확인했다.
+
+이로써 RAM 성능 분석은 자동 검증에 이어 실제 Windows 수동 검증까지
+**완료**됐다. Disk 성능 분석의 실제 Windows I/O 부하 수동 검증만
+아직 남아 있다.
+
 ## 현재 상태 (production 기준)
 
 - **CPU 성능 분석**: `PLAN.md` 기능 1~3이 production에 배포돼 있고,
@@ -195,37 +220,37 @@ payload로 검증했을 뿐, 실제 RAM/Disk 부하에서 Agent 콘솔과 웹 �
   `agent/cpu_agent.py`, `agent/main.py`의 CPU 관련 부분,
   `lib/cpu-status.ts`, `app/page.tsx`의 CPU 관련 부분을 임의로
   수정하지 않는다.
-- **RAM + Disk 성능 분석**: commit `60a7aab`로 구현·production
-  배포까지 완료됐고, 자동으로 검증 가능한 범위(테스트, typecheck,
-  build, exe 해시 일치, production API E2E, CPU 회귀 없음)는 모두
-  통과했다. **실제 Windows에서의 수동 부하 검증만 아직 남아 있다.**
-  이 수동 검증이 끝나기 전까지 `agent/ram_agent.py`,
-  `agent/disk_agent.py`, `agent/performance_upload.py`,
-  `agent/main.py`의 RAM/Disk 관련 부분, `lib/performance-status.ts`,
-  `app/page.tsx`의 RAM/Disk 관련 부분을 임의로 추가 수정하지 않는다.
+- **RAM 성능 분석**: commit `60a7aab`로 구현·production 배포까지
+  완료된 데 이어, 위 8번 항목에서 실제 Windows 수동 부하 검증까지
+  마쳤다. **완료 상태.** 회귀 버그가 확인되지 않는 한
+  `agent/ram_agent.py`, `agent/main.py`의 RAM 관련 부분,
+  `lib/performance-status.ts`, `app/page.tsx`의 RAM 관련 부분을
+  임의로 수정하지 않는다.
+- **Disk 성능 분석**: commit `60a7aab`로 구현·production 배포까지
+  완료됐고, 자동으로 검증 가능한 범위(테스트, typecheck, build, exe
+  해시 일치, production API E2E, CPU/RAM 회귀 없음)는 모두 통과했다.
+  **실제 Windows I/O 부하 수동 검증만 아직 남아 있다.** 이 수동
+  검증이 끝나기 전까지 `agent/disk_agent.py`,
+  `agent/performance_upload.py`, `agent/main.py`의 Disk 관련 부분,
+  `lib/performance-status.ts`, `app/page.tsx`의 Disk 관련 부분을
+  임의로 추가 수정하지 않는다.
 
 ## 다음 세션 Next Step
 
-**다음 세션 시작 작업: "RAM + Disk 실제 Windows 수동 검증".**
+**다음 세션 시작 작업: "Disk 실제 Windows I/O 수동 검증".**
 
-새 기능 구현이나 기존 CPU/RAM/Disk 코드 수정은 하지 않고, 아래
-항목을 실제 Windows PC에서 사용자가 직접 확인한다.
+CPU와 RAM은 실제 Windows 수동 검증까지 완료됐다. 새 기능 구현이나
+기존 CPU/RAM/Disk 코드 수정은 하지 않고, 아래 항목을 실제 Windows
+PC에서 사용자가 직접 확인한다.
 
-1. 새 production Agent(`TracePCAgent.exe`)를 Windows에서
-   다운로드/실행한다.
-2. 평상시(부하 없음) 상태의 CPU/RAM/Disk 결과가 Agent 콘솔과 웹
-   양쪽에서 정상 표시되는지 확인한다.
-3. 실제 RAM 부하를 발생시켜 `bottleneck-candidate`로 전환되는지
-   확인한다.
-4. RAM의 판정 근거(지속시간 등)와 관련 프로세스 후보가 정상
-   표시되는지 확인한다.
-5. 실제 Disk I/O 부하를 발생시켜 `bottleneck-candidate`로
+1. 실제 Disk I/O 부하를 발생시켜 `bottleneck-candidate`로
    전환되는지 확인한다.
-6. Disk의 판정 근거와 관련 프로세스 후보가 정상 표시되는지
-   확인한다.
-7. production 웹 `[성능 분석]` 화면에서 CPU/RAM/Disk 세 섹션이
-   실제로 어떻게 렌더링되는지 확인한다(레이아웃/디자인은 아직
-   범위 밖이며, 값이 올바르게 표시되는지만 확인 대상).
+2. Disk의 판정 근거(지속시간 등)와 관련 프로세스 후보가 정상
+   표시되는지 확인한다.
+3. production 웹 `[성능 분석]` 화면에서 Disk 상태/근거/프로세스
+   후보가 정상 표시되는지 확인한다.
+4. 같은 상황에서 CPU/RAM 섹션이 깨지지 않는지 확인한다.
+5. 테스트 종료 후 Disk I/O 부하가 정상적으로 해소되는지 확인한다.
 
 이 수동 검증이 모두 끝나기 전까지는 다음 항목을 시작하지 않는다.
 
