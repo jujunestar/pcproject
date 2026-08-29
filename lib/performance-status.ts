@@ -298,7 +298,7 @@ function parseDisk(parsed: Record<string, unknown>): DiskInfo | null | undefined
   };
 }
 
-function parseValue(value: string): PerformanceStatus {
+export function parseValue(value: string): PerformanceStatus {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -378,4 +378,35 @@ export async function fetchPerformanceStatus(code: string): Promise<PerformanceS
   }
 
   return parseValue(body.value);
+}
+
+export async function fetchHistoryEntries(code: string): Promise<
+  | { status: "invalid-code" }
+  | { status: "fetch-failed" }
+  | { status: "ok"; entries: Array<Extract<PerformanceStatus, { status: "received" }>> }
+> {
+  if (!CODE_PATTERN.test(code)) {
+    return { status: "invalid-code" };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/history?code=${encodeURIComponent(code)}`);
+  } catch {
+    return { status: "fetch-failed" };
+  }
+
+  if (!response.ok) {
+    return { status: "fetch-failed" };
+  }
+
+  const body = (await response.json()) as { entries: string[] };
+  const entries = body.entries
+    .map((raw) => parseValue(raw))
+    .filter(
+      (parsed): parsed is Extract<PerformanceStatus, { status: "received" }> =>
+        parsed.status === "received"
+    );
+
+  return { status: "ok", entries };
 }

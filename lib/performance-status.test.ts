@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchPerformanceStatus } from "./performance-status";
+import { fetchHistoryEntries, fetchPerformanceStatus } from "./performance-status";
 
 function mockFetchOnce(response: { ok: boolean; json: () => Promise<unknown> }) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response as Response));
@@ -302,5 +302,41 @@ describe("fetchPerformanceStatus", () => {
     const result = await fetchPerformanceStatus("ABC123");
 
     expect(result).toEqual({ status: "invalid-format" });
+  });
+});
+
+describe("fetchHistoryEntries", () => {
+  it("올바른 코드면 /api/history를 조회해 파싱 가능한 항목만 반환한다", async () => {
+    const valid = JSON.stringify(baseCpuFields);
+    const corrupt = "not json{";
+    const missingField = JSON.stringify({ ...baseCpuFields, cpuPercent: undefined });
+
+    mockFetchOnce({ ok: true, json: async () => ({ entries: [valid, corrupt, missingField] }) });
+
+    const result = await fetchHistoryEntries("ABC123");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].cpuPercent).toBe(42.3);
+    }
+  });
+
+  it("6자리 영숫자가 아닌 코드는 조회 없이 거부한다", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchHistoryEntries("ABCDE");
+
+    expect(result).toEqual({ status: "invalid-code" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("네트워크 오류가 발생하면 조회 실패 상태가 된다", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    const result = await fetchHistoryEntries("ABC123");
+
+    expect(result).toEqual({ status: "fetch-failed" });
   });
 });

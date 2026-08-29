@@ -283,3 +283,88 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+.screen-history {
+  background: #f4f6fb;
+}
+
+.history-panel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(30, 41, 59, 0.08);
+}
+
+.history-empty {
+  text-align: center;
+  color: #64748b;
+}
+
+.history-summary-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(30, 41, 59, 0.08);
+}
+
+.history-summary-card h4 {
+  font-size: 0.95rem;
+  margin: 0 0 4px;
+  color: #1e293b;
+}
+
+.history-summary-card p {
+  font-size: 0.85rem;
+  margin: 0;
+  color: #64748b;
+}
+
+.history-list {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(30, 41, 59, 0.08);
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #334155;
+  border-top: 1px solid #eef1f6;
+}
+
+.history-row:first-child {
+  border-top: none;
+}
+
+.history-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.history-dot.ok {
+  background: #22c55e;
+}
+
+.history-dot.warn {
+  background: #f59e0b;
+}
+
+.history-dot.neutral {
+  background: #94a3b8;
+}
+
+.history-status {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.link-button:disabled {
+  color: #bbb;
+  cursor: not-allowed;
+}

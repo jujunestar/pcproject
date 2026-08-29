@@ -31,6 +31,7 @@ export function StartScreen({
   onIssueCode,
   onCheckConnection,
   onStartAnalysis,
+  onViewHistory,
 }: {
   code: string;
   inputCode: string;
@@ -39,6 +40,7 @@ export function StartScreen({
   onIssueCode: () => void;
   onCheckConnection: () => void;
   onStartAnalysis: () => void;
+  onViewHistory: () => void;
 }) {
   const connectionState = deriveConnectionState(code, connectionCheck);
 
@@ -90,6 +92,9 @@ export function StartScreen({
         <h2>5. 성능 분석 시작</h2>
         <button className="button button-primary" onClick={onStartAnalysis} disabled={inputCode === ""}>
           성능 분석 시작
+        </button>
+        <button className="link-button" onClick={onViewHistory} disabled={inputCode === ""}>
+          히스토리 보기
         </button>
       </section>
     </main>

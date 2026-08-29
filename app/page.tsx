@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { AnalysisScreen } from "@/app/components/AnalysisScreen";
 import { CompareScreen } from "@/app/components/CompareScreen";
+import { HistoryScreen } from "@/app/components/HistoryScreen";
 import { StartScreen } from "@/app/components/StartScreen";
 import { fetchPerformanceStatus, type PerformanceStatus } from "@/lib/performance-status";
 
-type View = "start" | "result" | "compare";
+type View = "start" | "result" | "compare" | "history";
 
 export default function Home() {
   const [view, setView] = useState<View>("start");
@@ -32,12 +33,27 @@ export default function Home() {
     setConnectionCheck(result);
   }
 
+  async function recordHistoryEntry(analysisCode: string) {
+    try {
+      await fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: analysisCode }),
+      });
+    } catch {
+      // 히스토리 기록은 부가 기능이라 실패해도 화면 표시에는 영향을 주지 않는다.
+    }
+  }
+
   async function startAnalysis() {
     setView("result");
     setIsAnalyzing(true);
     const result = await fetchPerformanceStatus(inputCode);
     setPerformanceStatus(result);
     setIsAnalyzing(false);
+    if (result.status === "received") {
+      void recordHistoryEntry(inputCode);
+    }
   }
 
   async function requestReanalysis() {
@@ -47,6 +63,9 @@ export default function Home() {
     const result = await fetchPerformanceStatus(inputCode);
     setPerformanceStatus(result);
     setIsAnalyzing(false);
+    if (result.status === "received") {
+      void recordHistoryEntry(inputCode);
+    }
   }
 
   async function reanalyzeInCompare() {
@@ -54,6 +73,9 @@ export default function Home() {
     const result = await fetchPerformanceStatus(inputCode);
     setPerformanceStatus(result);
     setIsAnalyzing(false);
+    if (result.status === "received") {
+      void recordHistoryEntry(inputCode);
+    }
   }
 
   if (view === "start") {
@@ -66,8 +88,13 @@ export default function Home() {
         onIssueCode={issueCode}
         onCheckConnection={checkConnection}
         onStartAnalysis={startAnalysis}
+        onViewHistory={() => setView("history")}
       />
     );
+  }
+
+  if (view === "history") {
+    return <HistoryScreen code={inputCode} onBackToStart={() => setView("start")} />;
   }
 
   if (view === "compare") {

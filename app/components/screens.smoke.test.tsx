@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AnalysisScreen } from "./AnalysisScreen";
 import { CompareScreen } from "./CompareScreen";
+import { HistoryScreen } from "./HistoryScreen";
 import { StartScreen } from "./StartScreen";
 import type { PerformanceStatus } from "@/lib/performance-status";
 
@@ -205,6 +206,7 @@ describe("StartScreen 와이어프레임 상태", () => {
         onIssueCode={noop}
         onCheckConnection={noop}
         onStartAnalysis={noop}
+        onViewHistory={noop}
       />
     );
     expect(html).toContain("아직 연결 코드가 없습니다");
@@ -220,6 +222,7 @@ describe("StartScreen 와이어프레임 상태", () => {
         onIssueCode={noop}
         onCheckConnection={noop}
         onStartAnalysis={noop}
+        onViewHistory={noop}
       />
     );
     expect(html).toContain("연결 완료");
@@ -235,9 +238,19 @@ describe("StartScreen 와이어프레임 상태", () => {
         onIssueCode={noop}
         onCheckConnection={noop}
         onStartAnalysis={noop}
+        onViewHistory={noop}
       />
     );
     expect(html).toContain("연결 실패");
+  });
+});
+
+describe("HistoryScreen 와이어프레임 상태", () => {
+  const noop = () => {};
+
+  it("loading 상태를 렌더링한다 (SSR은 useEffect를 실행하지 않으므로 이 상태만 확인 가능 — populated/empty/error는 production 수동 확인)", () => {
+    const html = renderToStaticMarkup(<HistoryScreen code="ABC123" onBackToStart={noop} />);
+    expect(html).toContain("기록을 불러오는 중입니다");
   });
 });
 
