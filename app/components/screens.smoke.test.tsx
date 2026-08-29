@@ -89,14 +89,28 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
 
   it("loading 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <AnalysisScreen status={null} isLoading onRequestReanalysis={noop} onBackToStart={noop} />
+      <AnalysisScreen
+        code="ABC123"
+        status={null}
+        isLoading
+        onStatusUpdate={noop}
+        onRequestReanalysis={noop}
+        onBackToStart={noop}
+      />
     );
     expect(html).toContain("측정 중");
   });
 
   it("no-data 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <AnalysisScreen status={{ status: "no-data" }} isLoading={false} onRequestReanalysis={noop} onBackToStart={noop} />
+      <AnalysisScreen
+        code="ABC123"
+        status={{ status: "no-data" }}
+        isLoading={false}
+        onStatusUpdate={noop}
+        onRequestReanalysis={noop}
+        onBackToStart={noop}
+      />
     );
     expect(html).toContain("아직 수신된 데이터 없음");
   });
@@ -104,8 +118,10 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
   it("error 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
       <AnalysisScreen
+        code="ABC123"
         status={{ status: "fetch-failed" }}
         isLoading={false}
+        onStatusUpdate={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -115,7 +131,14 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
 
   it("all normal 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <AnalysisScreen status={baseReceived()} isLoading={false} onRequestReanalysis={noop} onBackToStart={noop} />
+      <AnalysisScreen
+        code="ABC123"
+        status={baseReceived()}
+        isLoading={false}
+        onStatusUpdate={noop}
+        onRequestReanalysis={noop}
+        onBackToStart={noop}
+      />
     );
     expect(html).toContain("측정한 CPU/RAM/Disk 범위에서 병목 후보가 발견되지 않았습니다");
   });
@@ -123,8 +146,10 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
   it("insufficient-data 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
       <AnalysisScreen
+        code="ABC123"
         status={allInsufficientData}
         isLoading={false}
+        onStatusUpdate={noop}
         onRequestReanalysis={noop}
         onBackToStart={noop}
       />
@@ -132,18 +157,36 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
     expect(html).toContain("아직 판단할 데이터가 부족합니다");
   });
 
-  it("bottleneck 1개 상태를 렌더링하고 그래프/추천 영역을 포함한다", () => {
+  it("bottleneck 1개 상태를 렌더링하고 추천 영역을 포함하며, 그래프는 fake-timeseries가 아니라 실제 sample 수집 중 상태로 시작한다", () => {
     const html = renderToStaticMarkup(
-      <AnalysisScreen status={cpuCandidate} isLoading={false} onRequestReanalysis={noop} onBackToStart={noop} />
+      <AnalysisScreen
+        code="ABC123"
+        status={cpuCandidate}
+        isLoading={false}
+        onStatusUpdate={noop}
+        onRequestReanalysis={noop}
+        onBackToStart={noop}
+      />
     );
     expect(html).toContain("가장 의심되는 병목 후보: CPU");
-    expect(html).toContain("예시 그래프");
+    // SSR은 useEffect(폴링)를 실행하지 않으므로 sample이 아직 0개인
+    // 상태만 확인 가능하다 — fake 그래프로 채워지지 않는지가 핵심.
+    expect(html).toContain("샘플 수집 중");
+    expect(html).not.toContain("예시 그래프");
+    expect(html).toContain("최신 측정값을 자동으로 확인하고 있습니다");
     expect(html).toContain("CPU 사용률이 높은 프로그램 확인해보기");
   });
 
   it("bottleneck 여러 개(동률) 상태를 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <AnalysisScreen status={tiedCandidates} isLoading={false} onRequestReanalysis={noop} onBackToStart={noop} />
+      <AnalysisScreen
+        code="ABC123"
+        status={tiedCandidates}
+        isLoading={false}
+        onStatusUpdate={noop}
+        onRequestReanalysis={noop}
+        onBackToStart={noop}
+      />
     );
     expect(html).toContain("동시에 감지된 병목 후보: RAM, Disk");
   });

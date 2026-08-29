@@ -67,6 +67,11 @@ body {
   text-align: center;
 }
 
+.panel-warning {
+  border-style: dashed;
+  padding: 0.5rem 1rem;
+}
+
 .panel-detail {
   border-color: #ddd;
   color: #333;

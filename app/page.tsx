@@ -84,8 +84,10 @@ export default function Home() {
 
   return (
     <AnalysisScreen
+      code={inputCode}
       status={performanceStatus}
       isLoading={isAnalyzing}
+      onStatusUpdate={setPerformanceStatus}
       onRequestReanalysis={requestReanalysis}
       onBackToStart={() => setView("start")}
     />

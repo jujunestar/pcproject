@@ -6,7 +6,7 @@ const SERIES_LABEL: Record<SeriesKey, string> = { cpu: "CPU", ram: "RAM", disk: 
 const SERIES_DASH: Record<SeriesKey, string> = { cpu: "0", ram: "6 4", disk: "2 3" };
 const SERIES_ORDER: SeriesKey[] = ["cpu", "ram", "disk"];
 
-const THRESHOLD_PERCENT = 90;
+export const THRESHOLD_PERCENT = 90;
 const WIDTH = 320;
 const HEIGHT = 140;
 const PADDING = 24;
@@ -16,16 +16,19 @@ export function UsageGraph({
   series,
   currentValues,
   evidenceNote,
+  caption,
 }: {
   title: string;
   series: UsageSeriesPoint[];
   currentValues: { cpu: number | null; ram: number | null; disk: number | null };
   evidenceNote?: string | null;
+  caption?: string;
 }) {
   const allValues = series.flatMap((point) => [point.cpu, point.ram, point.disk]);
   const maxValue = Math.max(THRESHOLD_PERCENT, ...allValues) * 1.1;
 
   function toX(index: number): number {
+    if (series.length <= 1) return PADDING; // 점이 1개뿐일 때 0으로 나누기 방지
     return PADDING + (index / (series.length - 1)) * (WIDTH - PADDING * 2);
   }
   function toY(value: number): number {
@@ -66,7 +69,7 @@ export function UsageGraph({
         ))}
       </div>
       <p className="usage-graph-caption">
-        예시 그래프 (실제 이력 연결은 다음 단계) · 점선: 병목 기준 {THRESHOLD_PERCENT}%
+        {caption ?? `예시 그래프 (실제 이력 연결은 다음 단계) · 점선: 병목 기준 ${THRESHOLD_PERCENT}%`}
       </p>
       {evidenceNote && <p className="usage-graph-evidence">{evidenceNote}</p>}
     </div>

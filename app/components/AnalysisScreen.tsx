@@ -1,17 +1,24 @@
+import { useEffect, useState } from "react";
 import {
   evaluateComprehensiveDiagnosis,
   type CandidateDetail,
   type ComprehensiveDiagnosis,
 } from "@/lib/comprehensive-diagnosis";
-import { buildFakeUsageSeries } from "@/lib/fake-timeseries";
+import type { UsageSeriesPoint } from "@/lib/fake-timeseries";
+import { appendSampleIfNew, shouldShowConnectionWarning, type LiveSample } from "@/lib/live-samples";
+import { PollingController } from "@/lib/polling-controller";
 import { buildFakeRecommendation, type RecommendationResource } from "@/lib/recommendation";
 import {
+  fetchPerformanceStatus,
   type DiskIoStatus,
   type OverloadStatus,
   type PerformanceStatus,
   type RamStatus,
 } from "@/lib/performance-status";
-import { UsageGraph } from "./UsageGraph";
+import { THRESHOLD_PERCENT, UsageGraph } from "./UsageGraph";
+
+const POLL_INTERVAL_MS = 2000;
+const MAX_SAMPLES = 20;
 
 const STATUS_TEXT: Record<Exclude<PerformanceStatus["status"], "received">, string> = {
   "invalid-code": "잘못된 연결 코드 형식",
@@ -94,6 +101,18 @@ function renderComprehensiveDiagnosis(diagnosis: ComprehensiveDiagnosis) {
   );
 }
 
+function toUsageSeriesPoints(samples: LiveSample[]): UsageSeriesPoint[] {
+  return samples.map((sample, index) => ({
+    label: `${index}`,
+    cpu: sample.cpuPercent,
+    // 구버전 Agent라 RAM/Disk 값이 없는 드문 경우, 그래프에서는 0으로
+    // 표시한다(억지로 보간하지 않되 선 자체는 끊기지 않게 함) — 상세
+    // 섹션에는 여전히 "데이터 부족"이 그대로 표시된다.
+    ram: sample.ramPercent ?? 0,
+    disk: sample.diskActivePercent ?? 0,
+  }));
+}
+
 function primaryResourceOf(diagnosis: ComprehensiveDiagnosis): RecommendationResource | null {
   if (diagnosis.kind === "single-primary") return diagnosis.primary.resource;
   if (diagnosis.kind === "tied-primary") return diagnosis.candidates[0]?.resource ?? null;
@@ -114,16 +133,61 @@ function LoadingBody() {
 }
 
 export function AnalysisScreen({
+  code,
   status,
   isLoading,
+  onStatusUpdate,
   onRequestReanalysis,
   onBackToStart,
 }: {
+  code: string;
   status: PerformanceStatus | null;
   isLoading: boolean;
+  onStatusUpdate: (status: PerformanceStatus) => void;
   onRequestReanalysis: () => void;
   onBackToStart: () => void;
 }) {
+  const [samples, setSamples] = useState<LiveSample[]>([]);
+  const [consecutiveFailureCount, setConsecutiveFailureCount] = useState(0);
+
+  // 화면②를 보고 있고(mount) + 최초 로딩이 끝났고 + 탭이 visible인 동안만
+  // 2000ms 간격으로 최신 데이터를 확인한다. 코드/구현 근거는
+  // docs/slices/real-time-performance-graph.md 참고. isLoading이 아직
+  // true인 최초 진입 시점에는 폴링을 시작하지 않는다 — 그 최초 1회
+  // 조회는 이미 부모(page.tsx)가 수행한다.
+  useEffect(() => {
+    if (isLoading || code === "") return;
+
+    async function tick() {
+      const result = await fetchPerformanceStatus(code);
+      if (result.status === "received") {
+        onStatusUpdate(result);
+        setSamples((prev) => appendSampleIfNew(prev, result, MAX_SAMPLES));
+        setConsecutiveFailureCount(0);
+      } else if (result.status !== "no-data") {
+        // no-data는 "아직 값이 없는 정상 대기 상태"라 실패로 세지 않는다.
+        setConsecutiveFailureCount((prev) => prev + 1);
+      }
+    }
+
+    const controller = new PollingController({ intervalMs: POLL_INTERVAL_MS, onTick: tick });
+
+    function handleVisibilityChange() {
+      controller.setVisible(!document.hidden);
+    }
+
+    controller.setVisible(!document.hidden);
+    controller.start();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      controller.stop();
+    };
+  }, [isLoading, code, onStatusUpdate]);
+
+  const showConnectionWarning = shouldShowConnectionWarning(consecutiveFailureCount);
+
   return (
     <main className="screen screen-analysis">
       <button className="link-button" onClick={onBackToStart}>
@@ -144,6 +208,12 @@ export function AnalysisScreen({
         </section>
       )}
 
+      {showConnectionWarning && (
+        <section className="panel panel-warning">
+          <p className="muted">연결 불안정 — 최신 값을 다시 확인하는 중입니다. 화면은 마지막으로 확인된 값을 보여주고 있습니다.</p>
+        </section>
+      )}
+
       {!isLoading && status !== null && status.status === "received" && (() => {
         const diagnosis = evaluateComprehensiveDiagnosis(status);
         const currentValues = {
@@ -151,7 +221,7 @@ export function AnalysisScreen({
           ram: status.ram?.percent ?? null,
           disk: status.disk?.activePercent ?? null,
         };
-        const series = buildFakeUsageSeries(currentValues);
+        const series = toUsageSeriesPoints(samples);
         const primaryCandidate =
           diagnosis.kind === "single-primary"
             ? diagnosis.primary
@@ -168,13 +238,19 @@ export function AnalysisScreen({
             </section>
 
             <section className="panel panel-graph">
-              <h2>실시간 사용량 (예시)</h2>
-              <UsageGraph
-                title="CPU / RAM / Disk 사용량 추이"
-                series={series}
-                currentValues={currentValues}
-                evidenceNote={primaryCandidate ? formatCandidateEvidence(primaryCandidate) : null}
-              />
+              <h2>실시간 사용량</h2>
+              <p className="muted">최신 측정값을 자동으로 확인하고 있습니다.</p>
+              {samples.length === 0 ? (
+                <p className="muted">샘플 수집 중… (곧 첫 측정값이 표시됩니다)</p>
+              ) : (
+                <UsageGraph
+                  title="CPU / RAM / Disk 사용량 추이"
+                  series={series}
+                  currentValues={currentValues}
+                  evidenceNote={primaryCandidate ? formatCandidateEvidence(primaryCandidate) : null}
+                  caption={`실제 측정값 · 점선: 병목 기준 ${THRESHOLD_PERCENT}%`}
+                />
+              )}
             </section>
 
             <section className="panel panel-recommendation">
