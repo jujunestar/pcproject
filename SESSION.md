@@ -212,6 +212,55 @@ payload로 검증했을 뿐, 실제 RAM/Disk 부하에서 Agent 콘솔과 웹 �
 **완료**됐다. Disk 성능 분석의 실제 Windows I/O 부하 수동 검증만
 아직 남아 있다.
 
+### 9. Disk 실제 Windows I/O 수동 검증: 미재현 (자동 검증은 완료 상태 유지)
+
+이어서 Disk 실제 Windows I/O 부하 수동 검증을 시도했으나, 안전한 범위
+안에서는 `bottleneck-candidate`(활성 시간 90% 이상 5초 이상 지속)를
+**재현하지 못했다**. 이 결과를 버그로 단정하지 않고, 아래 근거와 함께
+"미재현" 상태로 기록한다.
+
+**시도한 부하 방식 (총 2단계, 매번 안전 조건 — 시스템/사용자 파일
+미접촉, `%TEMP%` 하위 임시 파일만 사용, 시간/용량/반복 횟수 상한,
+무한 루프 없음, 종료 후 삭제 확인 — 을 지킨 채 진행)**:
+
+1. 작은 파일(50KB × 200개) 반복 복사/삭제 (`Copy-Item`, 병렬 3개
+   작업, 각 최대 15초/60회).
+2. `System.IO.FileStream`을 `FileOptions.WriteThrough`로 열어 OS
+   쓰기 캐시를 우회하는 순차 쓰기 (8MB 청크, 병렬 4개 작업, 각 최대
+   20초/2GB/400회 중 먼저 도달하는 조건까지).
+
+**관찰 방법 (코드 수정 없음)**: 두 단계 모두, `agent/disk_agent.py`의
+`compute_disk_active_percent`를 그대로 import해 Agent와 동일한 공식으로
+1.5초 간격 실시간 출력하는 관찰용 스크립트(프로젝트 파일 아님,
+스크래치패드에만 존재)와, psutil과 무관한 Windows 자체
+`typeperf "\PhysicalDisk(_Total)\% Disk Time"` 카운터를 **동시에**
+띄워 서로 대조했다.
+
+**결과**:
+- 1단계(Copy-Item): Agent 계산값 약 0~0.3%, typeperf 약 0~5%.
+- 2단계(WriteThrough): production 웹에서도 여전히 Disk I/O
+  병목 후보로 전환되지 않음.
+- production 웹 최종 확인값: Disk 용량 사용률 53.8%, Disk I/O 상태
+  "병목 근거 없음", Disk 활성 시간 0.0%.
+- 같은 테스트 동안 CPU/RAM 섹션과 웹/API 전반은 정상 동작을 유지했다
+  (회귀 없음).
+
+**판단**: 서로 독립적인 두 측정 경로(Agent의 계산식 자체 재사용 관찰값,
+Windows 자체 typeperf 카운터)가 두 단계 모두에서 일관되게 낮은 값으로
+**서로 일치**했다. 이는 "판정 로직이 잘못 계산한다"는 가설과 배치되는
+근거이며, 오히려 이 PC의 특정 NVMe SSD가 이번 세션에서 시도한 안전한
+범위의 부하로는 물리적으로 포화(saturate)되지 않았을 가능성을
+시사한다. 다만 이것도 확정된 원인은 아니며, 근거가 부족한 채로
+단정하지 않는다.
+
+**결정**: 이 이상으로 SSD에 더 강한 부하를 거는 시도는 더 이상 하지
+않는다(사용자 결정). Disk I/O 병목 판정 로직은 automated tests
+(pytest 34개)와 production API E2E(인위적으로 구성한
+`bottleneck-candidate` payload로 POST→GET 왕복 검증, `60a7aab`
+커밋 시점에 완료)에서 이미 정상 동작이 확인된 상태이므로 그 자동
+검증 완료 상태는 그대로 유지한다. **최종 상태: "Disk 실제 Windows
+I/O 병목 수동 검증: 미재현 / 자동 검증 완료".**
+
 ## 현재 상태 (production 기준)
 
 - **CPU 성능 분석**: `PLAN.md` 기능 1~3이 production에 배포돼 있고,
@@ -229,30 +278,22 @@ payload로 검증했을 뿐, 실제 RAM/Disk 부하에서 Agent 콘솔과 웹 �
 - **Disk 성능 분석**: commit `60a7aab`로 구현·production 배포까지
   완료됐고, 자동으로 검증 가능한 범위(테스트, typecheck, build, exe
   해시 일치, production API E2E, CPU/RAM 회귀 없음)는 모두 통과했다.
-  **실제 Windows I/O 부하 수동 검증만 아직 남아 있다.** 이 수동
-  검증이 끝나기 전까지 `agent/disk_agent.py`,
-  `agent/performance_upload.py`, `agent/main.py`의 Disk 관련 부분,
-  `lib/performance-status.ts`, `app/page.tsx`의 Disk 관련 부분을
-  임의로 추가 수정하지 않는다.
+  위 9번 항목에서 실제 Windows I/O 부하 수동 검증을 시도했으나
+  안전한 범위 안에서는 재현하지 못했다. **최종 상태: "Disk 실제
+  Windows I/O 병목 수동 검증: 미재현 / 자동 검증 완료".** 이를
+  버그로 단정하지 않으며, 더 강한 SSD 부하 테스트는 더 이상
+  시도하지 않는다. 회귀 버그가 확인되지 않는 한
+  `agent/disk_agent.py`, `agent/performance_upload.py`,
+  `agent/main.py`의 Disk 관련 부분, `lib/performance-status.ts`,
+  `app/page.tsx`의 Disk 관련 부분을 임의로 추가 수정하지 않는다.
 
 ## 다음 세션 Next Step
 
-**다음 세션 시작 작업: "Disk 실제 Windows I/O 수동 검증".**
+**다음 세션 시작 작업: "CPU/RAM/Disk 종합 진단" 설계.**
 
-CPU와 RAM은 실제 Windows 수동 검증까지 완료됐다. 새 기능 구현이나
-기존 CPU/RAM/Disk 코드 수정은 하지 않고, 아래 항목을 실제 Windows
-PC에서 사용자가 직접 확인한다.
-
-1. 실제 Disk I/O 부하를 발생시켜 `bottleneck-candidate`로
-   전환되는지 확인한다.
-2. Disk의 판정 근거(지속시간 등)와 관련 프로세스 후보가 정상
-   표시되는지 확인한다.
-3. production 웹 `[성능 분석]` 화면에서 Disk 상태/근거/프로세스
-   후보가 정상 표시되는지 확인한다.
-4. 같은 상황에서 CPU/RAM 섹션이 깨지지 않는지 확인한다.
-5. 테스트 종료 후 Disk I/O 부하가 정상적으로 해소되는지 확인한다.
-
-이 수동 검증이 모두 끝나기 전까지는 다음 항목을 시작하지 않는다.
-
-- CPU/RAM/Disk를 종합한 병목 분석 화면(새 기능)
-- 최종 UI 디자인/스타일링
+CPU/RAM/Disk 개별 분석은 모두 완료 상태다(Disk는 자동 검증 완료 +
+수동 검증 미재현으로 종결). 다음 vertical slice는 세 지표를 하나의
+화면에서 종합해 "가장 의심되는 병목 후보"를 보여주는 기능이다.
+설계안 제시까지만 진행했고 아직 SPEC 문서화나 구현은 시작하지
+않았다 — 다음 세션은 이 설계안에 대한 사용자 승인을 받는 것부터
+시작한다. 승인 전까지는 코드/문서 구현에 들어가지 않는다.
