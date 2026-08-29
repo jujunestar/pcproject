@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compareDiagnosis, hasNewMeasurement, type CandidateChangeKind } from "@/lib/comparison";
 import { appendSampleIfNew, toUsageSeriesPoints, type LiveSample } from "@/lib/live-samples";
 import { PollingController } from "@/lib/polling-controller";
@@ -59,6 +59,20 @@ export function CompareScreen({
   const [retryToken, setRetryToken] = useState(0);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "waiting" });
 
+  // onStatusUpdate(page.tsx의 handleCompareStatusUpdate)는 useCallback
+  // 없이 매 렌더마다 새로 만들어지는 함수다. 이걸 그대로 아래 폴링
+  // useEffect의 의존성 배열에 넣으면, Home이 이 화면과 무관한 이유로
+  // 재렌더링될 때마다(예: 다른 화면의 stray 콜백) 폴링 effect가
+  // 통째로 재시작되어 attempts가 0으로 리셋되고 30초 타임아웃이
+  // 영원히 완주되지 못한다(실제 production 버그, 재현 테스트로 확인함
+  // — app/components/CompareScreen.polling.test.tsx). ref에 최신
+  // 콜백만 담아두고, 폴링 effect는 이 ref를 통해서만 호출해 콜백
+  // 레퍼런스 변경이 폴링 재시작을 유발하지 않게 한다.
+  const onStatusUpdateRef = useRef(onStatusUpdate);
+  useEffect(() => {
+    onStatusUpdateRef.current = onStatusUpdate;
+  }, [onStatusUpdate]);
+
   // "조치 후 다시 분석"을 누른 시점(또는 화면 안에서 "다시 분석"을 다시
   // 누른 시점)마다, before의 measuredAt과 다른 진짜 새 측정값이 올
   // 때까지 짧게(최대 30초) 확인한다. Redis에 아직 남아있는 예전 값을
@@ -81,7 +95,7 @@ export function CompareScreen({
       }
 
       if (before !== null && hasNewMeasurement(before, result)) {
-        onStatusUpdate(result);
+        onStatusUpdateRef.current(result);
         setOutcome({ kind: "ready", after: result, afterSeries });
         stopped = true;
         controller.stop();
@@ -103,7 +117,9 @@ export function CompareScreen({
       stopped = true;
       controller.stop();
     };
-  }, [before, retryToken, code, onStatusUpdate]);
+    // onStatusUpdate는 의도적으로 제외한다 — 위 ref로만 접근해서 콜백
+    // 레퍼런스가 바뀌어도 이 폴링 자체는 재시작되지 않게 한다.
+  }, [before, retryToken, code]);
 
   return (
     <main className="screen screen-compare">
