@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import {
+  evaluateComprehensiveDiagnosis,
+  type CandidateDetail,
+  type ComprehensiveDiagnosis,
+} from "@/lib/comprehensive-diagnosis";
+import {
   fetchPerformanceStatus,
   type DiskIoStatus,
   type OverloadStatus,
@@ -40,6 +45,56 @@ function formatBytesAsGB(bytes: number): string {
 
 function formatBytesAsMB(bytes: number): string {
   return (bytes / 1024 ** 2).toFixed(1);
+}
+
+function renderCandidateDetail(candidate: CandidateDetail) {
+  return (
+    <div key={candidate.resource}>
+      <p>
+        {candidate.label} — 최고 {candidate.maxValueLabel},{" "}
+        {new Date(candidate.startedAt).toLocaleTimeString()}~
+        {new Date(candidate.endedAt).toLocaleTimeString()} (
+        {candidate.durationSeconds.toFixed(1)}초 지속)
+      </p>
+      {candidate.topProcessSummary && <p>관련 프로세스 후보: {candidate.topProcessSummary}</p>}
+    </div>
+  );
+}
+
+function renderComprehensiveDiagnosis(diagnosis: ComprehensiveDiagnosis) {
+  return (
+    <>
+      <p>{diagnosis.headline}</p>
+
+      {diagnosis.kind === "single-primary" && (
+        <>
+          {renderCandidateDetail(diagnosis.primary)}
+          {diagnosis.secondaryCandidates.length > 0 && (
+            <>
+              <p>동시에 감지된 병목 후보</p>
+              {diagnosis.secondaryCandidates.map(renderCandidateDetail)}
+            </>
+          )}
+        </>
+      )}
+
+      {diagnosis.kind === "tied-primary" && diagnosis.candidates.map(renderCandidateDetail)}
+
+      {(diagnosis.kind === "single-primary" || diagnosis.kind === "tied-primary") &&
+        diagnosis.others.map((other) => (
+          <p key={other.resource}>
+            {other.label}: {other.shortSummary}
+          </p>
+        ))}
+
+      {diagnosis.kind === "no-candidate" &&
+        diagnosis.resources.map((resource) => (
+          <p key={resource.resource}>
+            {resource.label}: {resource.shortSummary}
+          </p>
+        ))}
+    </>
+  );
 }
 
 export default function Home() {
@@ -117,6 +172,11 @@ export default function Home() {
               <p>상태: {STATUS_TEXT[performanceStatus.status]}</p>
             ) : (
               <>
+                <section>
+                  <h3>종합 진단</h3>
+                  {renderComprehensiveDiagnosis(evaluateComprehensiveDiagnosis(performanceStatus))}
+                </section>
+
                 <section>
                   <h3>CPU</h3>
                   <p>상태: {OVERLOAD_STATUS_TEXT[performanceStatus.overloadStatus]}</p>
