@@ -1,4 +1,4 @@
-import type { UsageSeriesPoint } from "@/lib/fake-timeseries";
+import type { UsageSeriesPoint } from "@/lib/live-samples";
 
 type SeriesKey = "cpu" | "ram" | "disk";
 

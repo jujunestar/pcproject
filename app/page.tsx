@@ -56,24 +56,19 @@ export default function Home() {
     }
   }
 
-  async function requestReanalysis() {
+  function requestReanalysis() {
     setPreviousStatus(performanceStatus);
     setView("compare");
-    setIsAnalyzing(true);
-    const result = await fetchPerformanceStatus(inputCode);
-    setPerformanceStatus(result);
-    setIsAnalyzing(false);
-    if (result.status === "received") {
-      void recordHistoryEntry(inputCode);
-    }
   }
 
-  async function reanalyzeInCompare() {
-    setIsAnalyzing(true);
-    const result = await fetchPerformanceStatus(inputCode);
-    setPerformanceStatus(result);
-    setIsAnalyzing(false);
-    if (result.status === "received") {
+  // 화면③이 "새 measuredAt이 실제로 도착했다"고 확인했을 때만 호출된다
+  // (CompareScreen 내부의 hasNewMeasurement 판정 참고) — 그 순간에는
+  // 사용자가 실제로 재분석을 수행한 것이므로 히스토리에도 기록한다.
+  // 2초 폴링(화면②)과 달리 여기는 무조건 매번 기록해도 스팸이 되지
+  // 않는다 — 애초에 새 값이 확인됐을 때만 호출되기 때문이다.
+  function handleCompareStatusUpdate(status: PerformanceStatus) {
+    setPerformanceStatus(status);
+    if (status.status === "received") {
       void recordHistoryEntry(inputCode);
     }
   }
@@ -100,10 +95,9 @@ export default function Home() {
   if (view === "compare") {
     return (
       <CompareScreen
+        code={inputCode}
         previousStatus={previousStatus}
-        currentStatus={performanceStatus}
-        isLoading={isAnalyzing}
-        onReanalyze={reanalyzeInCompare}
+        onStatusUpdate={handleCompareStatusUpdate}
         onBackToAnalysis={() => setView("result")}
       />
     );

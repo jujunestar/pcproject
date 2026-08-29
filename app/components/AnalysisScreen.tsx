@@ -4,10 +4,14 @@ import {
   type CandidateDetail,
   type ComprehensiveDiagnosis,
 } from "@/lib/comprehensive-diagnosis";
-import type { UsageSeriesPoint } from "@/lib/fake-timeseries";
-import { appendSampleIfNew, shouldShowConnectionWarning, type LiveSample } from "@/lib/live-samples";
+import {
+  appendSampleIfNew,
+  shouldShowConnectionWarning,
+  toUsageSeriesPoints,
+  type LiveSample,
+} from "@/lib/live-samples";
 import { PollingController } from "@/lib/polling-controller";
-import { buildFakeRecommendation, type RecommendationResource } from "@/lib/recommendation";
+import { buildRecommendation } from "@/lib/recommendation";
 import {
   fetchPerformanceStatus,
   type DiskIoStatus,
@@ -99,24 +103,6 @@ function renderComprehensiveDiagnosis(diagnosis: ComprehensiveDiagnosis) {
         ))}
     </>
   );
-}
-
-function toUsageSeriesPoints(samples: LiveSample[]): UsageSeriesPoint[] {
-  return samples.map((sample, index) => ({
-    label: `${index}`,
-    cpu: sample.cpuPercent,
-    // 구버전 Agent라 RAM/Disk 값이 없는 드문 경우, 그래프에서는 0으로
-    // 표시한다(억지로 보간하지 않되 선 자체는 끊기지 않게 함) — 상세
-    // 섹션에는 여전히 "데이터 부족"이 그대로 표시된다.
-    ram: sample.ramPercent ?? 0,
-    disk: sample.diskActivePercent ?? 0,
-  }));
-}
-
-function primaryResourceOf(diagnosis: ComprehensiveDiagnosis): RecommendationResource | null {
-  if (diagnosis.kind === "single-primary") return diagnosis.primary.resource;
-  if (diagnosis.kind === "tied-primary") return diagnosis.candidates[0]?.resource ?? null;
-  return null;
 }
 
 function LoadingBody() {
@@ -228,7 +214,7 @@ export function AnalysisScreen({
             : diagnosis.kind === "tied-primary"
               ? diagnosis.candidates[0]
               : null;
-        const recommendation = buildFakeRecommendation(primaryResourceOf(diagnosis));
+        const recommendation = buildRecommendation(diagnosis);
 
         return (
           <>
@@ -254,8 +240,7 @@ export function AnalysisScreen({
             </section>
 
             <section className="panel panel-recommendation">
-              <h2>지금 해볼 것 (예시)</h2>
-              <p className="muted">아직 준비 중인 기능입니다 — 직접 확인해볼 수 있는 행동만 안내합니다.</p>
+              <h2>지금 해볼 것</h2>
               <p className="recommendation-title">{recommendation.title}</p>
               {recommendation.steps.length > 0 && (
                 <ul>

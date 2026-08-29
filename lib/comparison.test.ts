@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareDiagnosis } from "./comparison";
+import { compareDiagnosis, hasNewMeasurement } from "./comparison";
 import type { PerformanceStatus } from "./performance-status";
 
 type Received = Extract<PerformanceStatus, { status: "received" }>;
@@ -145,5 +145,28 @@ describe("compareDiagnosis", () => {
     const result = compareDiagnosis(previous, current);
 
     expect(result.overallMessage).toBe("변화 있음 (일부 개선, 일부 악화)");
+  });
+});
+
+describe("hasNewMeasurement", () => {
+  it("같은 measuredAt이면 새 측정값이 아니다", () => {
+    const previous = baseReceived({ measuredAt: "A" });
+    const candidate = baseReceived({ measuredAt: "A" });
+
+    expect(hasNewMeasurement(previous, candidate)).toBe(false);
+  });
+
+  it("다른 measuredAt의 received 상태면 새 측정값이다", () => {
+    const previous = baseReceived({ measuredAt: "A" });
+    const candidate = baseReceived({ measuredAt: "B" });
+
+    expect(hasNewMeasurement(previous, candidate)).toBe(true);
+  });
+
+  it("received가 아니면(no-data/fetch-failed 등) 새 측정값이 아니다", () => {
+    const previous = baseReceived({ measuredAt: "A" });
+
+    expect(hasNewMeasurement(previous, { status: "no-data" })).toBe(false);
+    expect(hasNewMeasurement(previous, { status: "fetch-failed" })).toBe(false);
   });
 });

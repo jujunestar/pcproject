@@ -175,7 +175,8 @@ describe("AnalysisScreen 와이어프레임 상태", () => {
     expect(html).toContain("샘플 수집 중");
     expect(html).not.toContain("예시 그래프");
     expect(html).toContain("최신 측정값을 자동으로 확인하고 있습니다");
-    expect(html).toContain("CPU 사용률이 높은 프로그램 확인해보기");
+    expect(html).toContain("CPU 사용률이 높게 관찰된 프로그램이 있어요");
+    expect(html).toContain("cpu-hog.exe (PID 111, CPU 95.0%)");
   });
 
   it("bottleneck 여러 개(동률) 상태를 렌더링한다", () => {
@@ -259,46 +260,15 @@ describe("CompareScreen 와이어프레임 상태", () => {
 
   it("previousStatus 없음(empty state)을 렌더링한다", () => {
     const html = renderToStaticMarkup(
-      <CompareScreen
-        previousStatus={null}
-        currentStatus={null}
-        isLoading={false}
-        onReanalyze={noop}
-        onBackToAnalysis={noop}
-      />
+      <CompareScreen code="ABC123" previousStatus={null} onStatusUpdate={noop} onBackToAnalysis={noop} />
     );
     expect(html).toContain("비교할 이전 분석 결과가 없습니다");
   });
 
-  it("개선 시나리오(RAM 94% → 67%)를 렌더링한다", () => {
-    const previous = tiedCandidates;
-    const current = baseReceived({ ram: { ...baseReceived().ram!, percent: 67.0 } });
-
+  it("previousStatus가 있으면 새 측정값을 기다리는 상태로 시작한다 (SSR은 useEffect/폴링을 실행하지 않으므로 이 상태만 확인 가능 — ready/stalled는 production 수동 확인)", () => {
     const html = renderToStaticMarkup(
-      <CompareScreen
-        previousStatus={previous}
-        currentStatus={current}
-        isLoading={false}
-        onReanalyze={noop}
-        onBackToAnalysis={noop}
-      />
+      <CompareScreen code="ABC123" previousStatus={baseReceived()} onStatusUpdate={noop} onBackToAnalysis={noop} />
     );
-
-    expect(html).toContain("94.0%");
-    expect(html).toContain("67.0%");
-    expect(html).toContain("병목 후보 → 현재 측정에서는 발견되지 않음");
-  });
-
-  it("다시 분석 중(loading) 상태를 렌더링한다", () => {
-    const html = renderToStaticMarkup(
-      <CompareScreen
-        previousStatus={baseReceived()}
-        currentStatus={null}
-        isLoading
-        onReanalyze={noop}
-        onBackToAnalysis={noop}
-      />
-    );
-    expect(html).toContain("다시 측정 중");
+    expect(html).toContain("새 측정값을 기다리는 중입니다");
   });
 });

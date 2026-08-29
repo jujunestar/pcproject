@@ -9,6 +9,25 @@ export type LiveSample = {
   diskActivePercent: number | null;
 };
 
+// UsageGraph가 그리는 좌표 형태다. 구버전 Agent라 ram/disk가 없는 드문
+// 경우, 그래프에서는 0으로 표시한다(억지로 보간하지 않되 선이 끊기지
+// 않게 함) — 상세 섹션에는 여전히 "데이터 부족"이 그대로 표시된다.
+export type UsageSeriesPoint = {
+  label: string;
+  cpu: number;
+  ram: number;
+  disk: number;
+};
+
+export function toUsageSeriesPoints(samples: LiveSample[]): UsageSeriesPoint[] {
+  return samples.map((sample, index) => ({
+    label: `${index}`,
+    cpu: sample.cpuPercent,
+    ram: sample.ramPercent ?? 0,
+    disk: sample.diskActivePercent ?? 0,
+  }));
+}
+
 const CONNECTION_WARNING_THRESHOLD = 3;
 
 function toSample(status: ReceivedStatus): LiveSample {

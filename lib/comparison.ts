@@ -135,3 +135,13 @@ export function compareDiagnosis(previous: ReceivedStatus, current: ReceivedStat
     resourceChanges,
   };
 }
+
+// Redis에 아직 남아있는 이전 값을 그대로 "다시 분석" 결과로 오인하지
+// 않기 위한 판정이다. measuredAt이 실제로 달라진, 진짜 새 측정값일
+// 때만 true를 반환한다.
+export function hasNewMeasurement(
+  previous: ReceivedStatus,
+  candidate: PerformanceStatus
+): candidate is ReceivedStatus {
+  return candidate.status === "received" && candidate.measuredAt !== previous.measuredAt;
+}
