@@ -2,15 +2,24 @@
 
 ## 진행 상태 (2026-08-29 기준)
 
-기능 1~3 모두 완료됐다. 실제 Windows 환경 수동 부하 테스트로
+기능 1~3(CPU) 모두 완료됐다. 실제 Windows 환경 수동 부하 테스트로
 end-to-end 최종 검증까지 마쳤다 (Agent 콘솔의 `CPU 과부하 후보`
 판정, 판정 근거, 관련 프로세스 후보 탐지, production 웹 [성능
-분석] 화면 표시 모두 확인됨). 자세한 기록은 `SESSION.md` 참고.
+분석] 화면 표시 모두 확인됨).
+
+RAM + Disk 성능 분석 vertical slice도 같은 날 이어서 구현·production
+배포까지 완료했다(commit `60a7aab`). 자동으로 검증 가능한 범위
+(테스트, typecheck, build, exe 해시 일치, production API E2E, CPU
+회귀 없음)는 모두 통과했지만, 실제 Windows에서 RAM/Disk 부하를 걸어
+`bottleneck-candidate` 전환과 웹 화면 표시를 눈으로 확인하는 수동
+검증은 아직 하지 않았다. 자세한 기록은 `SESSION.md` 참고.
 
 CPU 기능은 완료 상태이며, 회귀 버그가 없는 한 추가로 수정하지
-않는다. 다음 슬라이스는 RAM + Disk 성능 분석이다 (아래 "오늘 안
-만들 것"의 RAM/Disk 제외는 이 문서가 작성된 CPU 슬라이스 당일
-기준이며, 이후 세션에서는 RAM/Disk가 다음 작업 대상이 된다).
+않는다. RAM/Disk 기능도 자동 검증까지는 끝났으므로, 실제 부하 수동
+검증이 끝나기 전까지는 구현을 추가로 수정하지 않는다. **다음 세션
+시작 작업은 "RAM + Disk 실제 Windows 수동 검증"이다** — 그 전까지
+CPU/RAM/Disk 종합 진단 화면이나 UI 디자인 등 새 기능은 시작하지
+않는다.
 
 ## 오늘의 성공
 

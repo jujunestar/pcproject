@@ -123,44 +123,111 @@ CPU%)"가 모두 함께 표시되는지는 사용자가 직접 재확인해야 �
 이로써 이전까지 "사용자가 직접 재확인해야 한다"로 남겨뒀던 항목이
 모두 실제 검증 완료로 종결됐다.
 
+### 7. RAM + Disk 성능 분석 vertical slice (commit `60a7aab`)
+
+CPU 최종 수동 검증 완료 직후, 같은 날 이어서 `PLAN.md`의 다음
+슬라이스인 RAM + Disk 성능 분석을 SPEC → TDD → 구현 → exe 재빌드 →
+production 배포까지 완료했다.
+
+- `specs/ram-analysis.md`, `specs/disk-analysis.md`: 이 저장소
+  환경에서 실제 psutil 7.2.2를 직접 실행해 확인한 값
+  (`virtual_memory`, `disk_usage`, `disk_io_counters` 등)을 근거로
+  판정 기준과 한계를 기록. Disk는 "용량 사용률"과 "I/O 성능
+  병목"을 코드 구조상 완전히 분리했다(용량만으로 성능 병목을
+  단정하지 않음). Windows에는 `disk_io_counters()`에 `busy_time`
+  필드가 없음을 확인해, `read_time`+`write_time` 델타를 경과시간으로
+  나눈 "활성 시간 비율(%)"을 직접 계산하는 방식을 채택했다(100%를
+  넘을 수 있음을 SPEC에 명시).
+- `agent/ram_agent.py`, `agent/disk_agent.py`: CPU와 동일한 구조
+  (이력 → 지속시간 기반 판정 → 병목 확정 시점에만 프로세스 후보
+  수집)로 TDD 구현. `agent/cpu_agent.py`는 이번 슬라이스에서 전혀
+  수정하지 않았다.
+- `agent/performance_upload.py`: CPU/RAM/Disk 측정 결과를 하나의
+  `/api/data` payload로 합쳐 한 번만 업로드하는 순수 함수 (같은
+  code에 여러 번 쓰면 이전 값이 덮어써지므로, 반드시 한 번에
+  합쳐서 보내야 함).
+- `agent/main.py`: RAM/Disk 기본 측정(`virtual_memory`,
+  `disk_usage`, `disk_io_counters` 델타)은 핵심 루프에 가볍게
+  추가했고, 프로세스 후보 수집(전체 프로세스 순회)은 CPU와 마찬가지로
+  병목이 **새로** 확정된 주기에만 실행하도록 설계했다 — 5번 항목에서
+  겪은 "프로세스 수집이 판정용 측정 간격 자체를 오염시키는" 문제를
+  RAM/Disk에서 반복하지 않기 위함이다. Disk I/O 활성 시간 비율은
+  기존 CPU 측정의 2초 블로킹 구간을 그대로 샘플링 창으로 재사용해
+  별도 sleep을 추가하지 않았다.
+- `lib/performance-status.ts`: `/api/data` 응답을 CPU/RAM/Disk로
+  해석하는 신규 모듈. `lib/cpu-status.ts`는 수정하지 않고 타입만
+  재사용했다. RAM/Disk 필드가 아예 없는 구버전 Agent payload도
+  하위 호환으로 처리(해당 리소스를 `null`로 표시, 임의 값 생성 안 함).
+- `app/page.tsx`: `[성능 분석]` 결과 화면에 CPU/RAM/Disk 3개 섹션을
+  구분해 표시하도록 변경. 데이터가 부족하면 억지로 정상/병목 판정을
+  하지 않고 "데이터 부족"으로 표시.
+
+**검증 결과**:
+- Python 전체 123/123 통과 (CPU 47 + RAM 32 + Disk 34 +
+  performance_upload 10). `agent/test_cpu_agent.py` 단독 47/47 —
+  CPU 회귀 없음.
+- npm test 28/28 통과 (cpu-status 13 + performance-status 15).
+  typecheck 통과, `next build` 성공.
+- 새 exe를 이 PC에서 실제로 실행해, 진짜 psutil 측정값(RAM/Disk
+  포함)이 production `/api/data`에 정상 업로드되는 것을 확인.
+- exe 재빌드 → `public/downloads/TracePCAgent.exe` 교체 →
+  commit(`60a7aab`) → push → Vercel production 자동 배포 완료.
+  production에서 실제로 다운로드한 exe와 로컬 빌드 exe의 SHA256이
+  `2907ddd0f3efe502d75e12866911b84bdd58481de6d2ebd45a66c83ada2cebc7`
+  (12,116,698 bytes)로 완전히 일치함을 확인.
+- production API E2E: 코드 발급 → CPU(정상) + RAM(`bottleneck-candidate`,
+  evidence/topProcess 포함) + Disk(`bottleneck-candidate`,
+  `diskActivePercent: 175.0`처럼 100% 초과값 포함) 통합 payload를
+  POST → GET으로 원본과 완전히 동일하게 왕복됨을 확인.
+
+**이번 세션에서 자동으로 검증하지 못하고 남겨둔 것**: CPU 슬라이스
+때와 마찬가지로, 위험한 실제 RAM 고갈이나 Disk 풀가동 부하는 이번
+세션에서 직접 만들지 않았다. production API 왕복은 인위적으로 구성한
+payload로 검증했을 뿐, 실제 RAM/Disk 부하에서 Agent 콘솔과 웹 화면에
+`bottleneck-candidate` 전환·판정 근거·관련 프로세스 후보가 실제로
+표시되는지는 아직 실측 확인되지 않았다.
+
 ## 현재 상태 (production 기준)
 
-`PLAN.md` 기능 1~3(CPU 과부하 판정 + 관련 프로세스 후보 + 측정
-근거 표시)이 production에 배포돼 있고, 실제 Windows 환경의 수동
-부하 테스트로 end-to-end 최종 검증까지 완료됐다. 이번 세션에서
-발견된 두 차례의 실제 부하 관련 버그(측정 간격 임계값, 프로세스
-수집 설계, System Idle Process 오염)도 모두 수정·검증됐다.
-
-**CPU 성능 분석 기능은 완료 상태다.** 회귀 버그가 확인되지 않는 한
-이 기능의 코드(`agent/cpu_agent.py`, `agent/main.py`,
-`lib/cpu-status.ts`, `app/page.tsx`의 CPU 관련 부분)는 다음
-세션에서 임의로 수정하지 않는다.
+- **CPU 성능 분석**: `PLAN.md` 기능 1~3이 production에 배포돼 있고,
+  실제 Windows 환경의 수동 부하 테스트로 end-to-end 최종 검증까지
+  완료됐다(위 6번 항목). **완료 상태.** 회귀 버그가 확인되지 않는 한
+  `agent/cpu_agent.py`, `agent/main.py`의 CPU 관련 부분,
+  `lib/cpu-status.ts`, `app/page.tsx`의 CPU 관련 부분을 임의로
+  수정하지 않는다.
+- **RAM + Disk 성능 분석**: commit `60a7aab`로 구현·production
+  배포까지 완료됐고, 자동으로 검증 가능한 범위(테스트, typecheck,
+  build, exe 해시 일치, production API E2E, CPU 회귀 없음)는 모두
+  통과했다. **실제 Windows에서의 수동 부하 검증만 아직 남아 있다.**
+  이 수동 검증이 끝나기 전까지 `agent/ram_agent.py`,
+  `agent/disk_agent.py`, `agent/performance_upload.py`,
+  `agent/main.py`의 RAM/Disk 관련 부분, `lib/performance-status.ts`,
+  `app/page.tsx`의 RAM/Disk 관련 부분을 임의로 추가 수정하지 않는다.
 
 ## 다음 세션 Next Step
 
-**다음 작업: RAM + Disk 성능 분석 vertical slice.**
+**다음 세션 시작 작업: "RAM + Disk 실제 Windows 수동 검증".**
 
-CPU 슬라이스와 동일하게 vertical slice 원칙으로, 먼저 SPEC부터
-작성해 확인받은 뒤 TDD로 구현한다. 다음 사항을 지킨다.
+새 기능 구현이나 기존 CPU/RAM/Disk 코드 수정은 하지 않고, 아래
+항목을 실제 Windows PC에서 사용자가 직접 확인한다.
 
-1. **기존 CPU 기능은 건드리지 않는다** — 회귀 버그가 없는 한
-   수정하지 않는다.
-2. **핵심 measurement loop에 무거운 process scanning을 매번 넣지
-   않는다.** 이번 세션에서 "프로세스 수집이 매 주기 실행되며
-   측정 간격 자체를 오염시켜 판정을 무력화시킨" 문제를 겪었다
-   (SESSION.md 위 5번 항목 참고). RAM/Disk에서 관련 프로세스
-   후보를 수집할 때도 병목 후보가 confirmed된 시점에만 한 번
-   수집하고, 매 주기 무조건 실행되는 무거운 스캔을 핵심 측정
-   경로에 넣지 않는다.
-3. **Disk 저장공간 사용률과 Disk I/O 성능 병목을 혼동하지
-   않는다.** 이 둘은 서로 다른 지표이며 서로 다른 병목 후보다 —
-   구현 전 SPEC에서 이 둘을 명확히 구분해 각각 어떤 측정값·판정
-   기준을 쓰는지 정의한다.
-4. RAM/Disk도 CPU와 같은 구조로 구현한다: **실제 측정 근거 → 병목
-   후보 → 관련 프로세스 후보.**
-5. **측정하지 않은 원인을 단정하지 않는다** (프로젝트 암묵지,
-   `CLAUDE.md`/`PRD.md` 그대로 적용).
-6. UI 디자인은 아직 하지 않는다.
-7. RAM/Disk 이후에는 CPU/RAM/Disk를 종합한 병목 분석 화면을
-   구현할 예정이다 (이번 세션 범위 아님, 다음다음 단계로 기록만
-   해둔다).
+1. 새 production Agent(`TracePCAgent.exe`)를 Windows에서
+   다운로드/실행한다.
+2. 평상시(부하 없음) 상태의 CPU/RAM/Disk 결과가 Agent 콘솔과 웹
+   양쪽에서 정상 표시되는지 확인한다.
+3. 실제 RAM 부하를 발생시켜 `bottleneck-candidate`로 전환되는지
+   확인한다.
+4. RAM의 판정 근거(지속시간 등)와 관련 프로세스 후보가 정상
+   표시되는지 확인한다.
+5. 실제 Disk I/O 부하를 발생시켜 `bottleneck-candidate`로
+   전환되는지 확인한다.
+6. Disk의 판정 근거와 관련 프로세스 후보가 정상 표시되는지
+   확인한다.
+7. production 웹 `[성능 분석]` 화면에서 CPU/RAM/Disk 세 섹션이
+   실제로 어떻게 렌더링되는지 확인한다(레이아웃/디자인은 아직
+   범위 밖이며, 값이 올바르게 표시되는지만 확인 대상).
+
+이 수동 검증이 모두 끝나기 전까지는 다음 항목을 시작하지 않는다.
+
+- CPU/RAM/Disk를 종합한 병목 분석 화면(새 기능)
+- 최종 UI 디자인/스타일링
