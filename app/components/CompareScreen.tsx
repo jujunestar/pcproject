@@ -172,10 +172,9 @@ export function CompareScreen({
 
   return (
     <main className="screen screen-compare">
-      <header className="workspace-header">
-        <div className="workspace-brand"><span>⌁</span><strong>TracePC</strong></div>
-        <button className="link-button" onClick={onBackToAnalysis}>성능 분석 결과</button>
-      </header>
+      <button className="link-button" onClick={onBackToAnalysis}>
+        ← 성능 분석 결과
+      </button>
 
       <section className="panel">
         <div className="page-heading">
@@ -228,17 +227,10 @@ export function CompareScreen({
                 <h2>가장 큰 변화</h2>
                 {comparison.headlineChange ? (
                   <>
-                    <div className="comparison-metric-hero">
-                      <div>
-                        <span>Before · {comparison.headlineChange.label}</span>
-                        <strong>{comparison.headlineChange.beforeValueLabel}</strong>
-                      </div>
-                      <b className="comparison-metric-arrow">→</b>
-                      <div>
-                        <span>After · {comparison.headlineChange.label}</span>
-                        <strong>{comparison.headlineChange.afterValueLabel}</strong>
-                      </div>
-                    </div>
+                    <p className="diagnosis-headline">
+                      {comparison.headlineChange.label} {comparison.headlineChange.beforeValueLabel} →{" "}
+                      {comparison.headlineChange.afterValueLabel}
+                    </p>
                     <p className="muted">{CANDIDATE_CHANGE_TEXT[comparison.headlineChange.candidateChange]}</p>
                   </>
                 ) : (
